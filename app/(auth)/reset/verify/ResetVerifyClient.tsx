@@ -12,7 +12,7 @@ type VerifyForm = {
   code: string;
 };
 
-export default function VerifyClient() {
+export default function ResetVerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const contact = searchParams?.get("contact") || "";
@@ -38,7 +38,7 @@ export default function VerifyClient() {
     const res = await fetch("/api/auth/verify-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contact, otp: values.code, purpose: "signup" })
+      body: JSON.stringify({ contact, otp: values.code, purpose: "reset" })
     });
 
     setLoading(false);
@@ -49,7 +49,11 @@ export default function VerifyClient() {
     }
 
     const data = (await res.json()) as { token?: string };
-    router.push(`/signup/password?contact=${encodeURIComponent(contact)}&token=${encodeURIComponent(data.token || "")}`);
+    router.push(
+      `/reset/password?contact=${encodeURIComponent(contact)}&token=${encodeURIComponent(
+        data.token || ""
+      )}`
+    );
   };
 
   const handleResend = async () => {
@@ -66,7 +70,7 @@ export default function VerifyClient() {
     const res = await fetch("/api/auth/send-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contact, type: "email", purpose: "signup" })
+      body: JSON.stringify({ contact, type: "email", purpose: "reset" })
     });
     setSendingOtp(false);
     if (!res.ok) {
@@ -87,9 +91,7 @@ export default function VerifyClient() {
           {...register("code", { required: true })}
         />
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        {otpStatus ? (
-          <p className="text-sm text-neutral-600">{otpStatus}</p>
-        ) : null}
+        {otpStatus ? <p className="text-sm text-neutral-600">{otpStatus}</p> : null}
         <button
           type="submit"
           disabled={loading}

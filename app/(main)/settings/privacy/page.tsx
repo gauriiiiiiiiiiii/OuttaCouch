@@ -19,7 +19,12 @@ export default function PrivacySettingsPage() {
   };
 
   return (
-    <PageShell title="Privacy" subtitle="Control your visibility.">
+    <PageShell
+      title="Privacy"
+      subtitle="Control your visibility."
+      backHref="/settings"
+      backLabel="Back to settings"
+    >
       <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
         <div className="space-y-4">
           <div>

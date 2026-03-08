@@ -1,3 +1,4 @@
+import { Calendar, MapPin, Tag } from "lucide-react";
 import type { EventSummary } from "@/types";
 
 export default function EventCard({ event }: { event: EventSummary }) {
@@ -16,12 +17,21 @@ export default function EventCard({ event }: { event: EventSummary }) {
           No image
         </div>
       )}
-      <div className="text-xs uppercase tracking-[0.2em] text-ocean">
-        {event.category}
+      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-ocean">
+        <Tag className="h-3.5 w-3.5" />
+        <span>{event.category}</span>
       </div>
       <h3 className="mt-2 text-lg font-semibold">{event.title}</h3>
-      <p className="text-sm text-neutral-600">{event.date}</p>
-      <p className="text-sm text-neutral-500">{event.location}</p>
+      <div className="mt-2 space-y-1 text-sm text-neutral-600">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-neutral-400" />
+          <span>{event.date}</span>
+        </div>
+        <div className="flex items-center gap-2 text-neutral-500">
+          <MapPin className="h-4 w-4 text-neutral-400" />
+          <span>{event.location}</span>
+        </div>
+      </div>
     </div>
   );
 }

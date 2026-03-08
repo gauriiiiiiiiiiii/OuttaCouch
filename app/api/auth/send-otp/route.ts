@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
+import { sendEmail } from "@/lib/sendEmail";
 
 type SendOtpBody = {
   contact: string;
@@ -25,36 +25,39 @@ export async function POST(request: Request) {
   const codeHash = hashCode(code);
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-  await prisma.otpToken.create({
-    data: {
-      contact,
-      codeHash,
-      purpose: body.purpose ?? "signup",
-      expiresAt
-    }
-  });
+  try {
+    await prisma.otpToken.create({
+      data: {
+        contact,
+        codeHash,
+        purpose: body.purpose ?? "signup",
+        expiresAt
+      }
+    });
+  } catch (error) {
+    console.error("Failed to store OTP", error);
+    return NextResponse.json(
+      { error: "Database unavailable" },
+      { status: 502 }
+    );
+  }
 
   if ((body.type ?? "email") === "email") {
-    const resendApiKey = process.env.RESEND_API_KEY || "";
-    const fromAddress =
-      process.env.RESEND_FROM || "OUTTACOUCH <onboarding@resend.dev>";
-
-    if (!resendApiKey || !fromAddress) {
-      return NextResponse.json(
-        { error: "Email service not configured" },
-        { status: 500 }
-      );
-    }
-
     try {
-      const resend = new Resend(resendApiKey);
-      await resend.emails.send({
-        from: fromAddress,
+      const result = await sendEmail({
         to: contact,
         subject: "Your OUTTACOUCH verification code",
         text: `Your OTP is ${code}. It expires in 10 minutes.`
       });
+
+      if (result.status === "skipped") {
+        return NextResponse.json(
+          { error: "Email service not configured" },
+          { status: 500 }
+        );
+      }
     } catch (error) {
+      console.error("Failed to send OTP email", error);
       return NextResponse.json(
         { error: "Failed to send OTP email" },
         { status: 502 }

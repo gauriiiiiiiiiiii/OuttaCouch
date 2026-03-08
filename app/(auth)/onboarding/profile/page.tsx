@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
+import { StorageService } from "@/lib/services/storage";
 
 const preferenceOptions = [
   "Music",
@@ -22,20 +23,48 @@ const preferenceOptions = [
 type ProfileForm = {
   displayName: string;
   bio?: string;
+  profilePhotoUrl?: string;
   preferences: string[];
 };
 
 export default function ProfileOnboardingPage() {
   const router = useRouter();
-  const { register, handleSubmit } = useForm<ProfileForm>({
-    defaultValues: { preferences: [] }
+  const { register, handleSubmit, setValue } = useForm<ProfileForm>({
+    defaultValues: { preferences: [], profilePhotoUrl: "" }
   });
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  const handlePhotoUpload = async (file?: File) => {
+    if (!file) {
+      return;
+    }
+    setUploading(true);
+    setError(null);
+    setStatus(null);
+    const result = await StorageService.uploadImage({
+      file,
+      bucket: "profile-photos",
+      folder: "users"
+    });
+    if (result.error || !result.publicUrl) {
+      setError(result.error || "Image upload failed.");
+      setUploading(false);
+      return;
+    }
+    setPhotoPreview(result.publicUrl);
+    setValue("profilePhotoUrl", result.publicUrl);
+    setStatus("Photo uploaded.");
+    setUploading(false);
+  };
 
   const onSubmit = async (values: ProfileForm) => {
     setLoading(true);
     setError(null);
+    setStatus(null);
     const res = await fetch("/api/users/me", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -51,14 +80,40 @@ export default function ProfileOnboardingPage() {
       setError("Could not save profile.");
       return;
     }
-
-    router.push("/explore");
+    setStatus("Profile saved. Redirecting...");
+    setTimeout(() => {
+      window.location.href = "/explore";
+    }, 600);
   };
 
   return (
     <PageShell title="Complete your profile" subtitle="Unlock all features.">
       <SectionCard title="Profile" description="Photo, name, bio, interests.">
         <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+          <div className="flex items-center gap-4">
+            <div className="h-16 w-16 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
+              {photoPreview ? (
+                <img
+                  src={photoPreview}
+                  alt="Profile preview"
+                  className="h-full w-full object-cover"
+                />
+              ) : null}
+            </div>
+            <label className="text-sm font-semibold">
+              <span className="rounded-full border border-neutral-300 px-4 py-2">
+                {uploading ? "Uploading..." : "Upload photo"}
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => handlePhotoUpload(event.target.files?.[0])}
+                disabled={uploading}
+              />
+            </label>
+          </div>
+          <input type="hidden" {...register("profilePhotoUrl")} />
           <input
             className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
             placeholder="Display name"
@@ -82,6 +137,7 @@ export default function ProfileOnboardingPage() {
               </label>
             ))}
           </div>
+          {status ? <p className="text-sm text-neutral-600">{status}</p> : null}
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button
             type="submit"

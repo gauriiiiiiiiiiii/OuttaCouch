@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SectionCard from "@/components/ui/SectionCard";
+import Link from "next/link";
 
 type LoginForm = {
   contact: string;
@@ -60,6 +61,15 @@ export default function LoginClient() {
         >
           {loading ? "Signing in..." : "Log in"}
         </button>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Link href="/reset" className="text-neutral-600 underline">
+            Forgot password?
+          </Link>
+          <span className="text-neutral-400">•</span>
+          <Link href="/signup" className="text-neutral-600 underline">
+            Create account
+          </Link>
+        </div>
       </form>
     </SectionCard>
   );

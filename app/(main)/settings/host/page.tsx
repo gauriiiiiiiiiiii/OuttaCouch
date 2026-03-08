@@ -3,7 +3,12 @@ import PageShell from "@/components/ui/PageShell";
 
 export default function HostToolsPage() {
   return (
-    <PageShell title="Host tools" subtitle="Payouts and dashboards.">
+    <PageShell
+      title="Host tools"
+      subtitle="Payouts and dashboards."
+      backHref="/settings"
+      backLabel="Back to settings"
+    >
       <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
         <p className="text-sm text-neutral-600">
           Manage your hosted events and payouts.

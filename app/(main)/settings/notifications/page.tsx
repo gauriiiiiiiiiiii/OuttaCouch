@@ -13,7 +13,12 @@ export default function NotificationSettingsPage() {
   };
 
   return (
-    <PageShell title="Notifications" subtitle="Choose what reaches you.">
+    <PageShell
+      title="Notifications"
+      subtitle="Choose what reaches you."
+      backHref="/settings"
+      backLabel="Back to settings"
+    >
       <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
         <div className="space-y-4">
           <p className="text-sm text-neutral-600">

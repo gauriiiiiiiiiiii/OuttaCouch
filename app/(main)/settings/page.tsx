@@ -34,7 +34,7 @@ export default function SettingsPage() {
 
   const handleDeactivate = async () => {
     const confirmed = window.confirm(
-      "Deactivate your account? You can reactivate by logging in again."
+      "Delete your account? This removes your email/phone so you can sign up again."
     );
     if (!confirmed) {
       return;
@@ -48,7 +48,12 @@ export default function SettingsPage() {
   };
 
   return (
-    <PageShell title="Settings" subtitle="Manage account and privacy.">
+    <PageShell
+      title="Settings"
+      subtitle="Manage account and privacy."
+      backHref="/profile"
+      backLabel="Back to profile"
+    >
       <div className="space-y-6">
         <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
           <h2 className="text-lg font-semibold">Account hub</h2>
@@ -81,11 +86,10 @@ export default function SettingsPage() {
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
           <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-red-500">
-            Deactivate account
+            Delete account
           </h2>
           <p className="mt-2 text-sm text-neutral-600">
-            This hides your profile and removes you from search. You can log back in
-            any time to reactivate.
+            This removes your email and phone so you can create a new account later.
           </p>
           <button
             type="button"
@@ -93,7 +97,7 @@ export default function SettingsPage() {
             disabled={deactivating}
             className="mt-4 rounded-full border border-red-300 px-5 py-2 text-sm font-semibold text-red-600"
           >
-            {deactivating ? "Deactivating..." : "Deactivate account"}
+            {deactivating ? "Deleting..." : "Delete account"}
           </button>
         </div>
         <button

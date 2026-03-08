@@ -10,7 +10,7 @@ Event-first social connection web app where the feed is the city and the profile
 - NextAuth (Credentials)
 - Prisma + PostgreSQL (Supabase)
 - Supabase Storage (images)
-- Resend (OTP email)
+- Nodemailer (Gmail SMTP for OTP email)
 - Framer Motion (swipe)
 - Recharts (analytics)
 - Leaflet / React-Leaflet (maps)
@@ -38,8 +38,9 @@ Create a `.env.local` file with:
 DATABASE_URL=
 NEXTAUTH_SECRET=
 NEXTAUTH_URL=
-RESEND_API_KEY=
-RESEND_FROM=
+EMAIL_USER=
+EMAIL_PASS=
+EMAIL_FROM=
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
@@ -77,7 +78,7 @@ npx prisma generate
 - Run `npx prisma migrate deploy`
 - Build and start: `npm run build` then `npm run start`
 - Ensure Supabase storage buckets exist and are public
-- Verify Resend sender is verified
+- Verify Gmail app password is set and active
 
 ## Structure
 

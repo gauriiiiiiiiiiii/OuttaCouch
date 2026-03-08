@@ -36,7 +36,7 @@ Backend:
 Auth + Email:
 
 - NextAuth Credentials
-- OTP-based verification via Resend
+- OTP-based verification via Nodemailer (Gmail SMTP)
 
 Storage:
 
@@ -322,8 +322,9 @@ Required:
 - DATABASE_URL
 - NEXTAUTH_SECRET
 - NEXTAUTH_URL
-- RESEND_API_KEY
-- RESEND_FROM
+- EMAIL_USER
+- EMAIL_PASS
+- EMAIL_FROM
 - NEXT_PUBLIC_SUPABASE_URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY
 - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
@@ -340,7 +341,7 @@ Optional:
 - Run `npm run build`
 - Run `npm run start`
 - Verify Supabase buckets exist and are public
-- Verify Resend sender is verified
+- Verify Gmail app password is set and active
 
 ## Known Gaps / Enhancements
 

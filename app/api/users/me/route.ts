@@ -82,6 +82,14 @@ export async function DELETE(request: Request) {
   await prisma.user.update({
     where: { id: token.sub },
     data: {
+      email: null,
+      phone: null,
+      passwordHash: "",
+      profilePhotoUrl: null,
+      displayName: null,
+      bio: null,
+      preferences: [],
+      profileComplete: false,
       isDeactivated: true,
       deactivatedAt: new Date(),
       profileVisibility: "private",

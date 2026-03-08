@@ -1,9 +1,4 @@
-import { Resend } from "resend";
-
-const apiKey = process.env.RESEND_API_KEY || "";
-const from = process.env.RESEND_FROM || "";
-
-const resend = apiKey ? new Resend(apiKey) : null;
+import { sendEmail } from "@/lib/sendEmail";
 
 export const sendNotificationEmail = async ({
   to,
@@ -14,16 +9,5 @@ export const sendNotificationEmail = async ({
   subject: string;
   text: string;
 }) => {
-  if (!resend || !from) {
-    return { status: "skipped" };
-  }
-
-  await resend.emails.send({
-    from,
-    to,
-    subject,
-    text
-  });
-
-  return { status: "sent" };
+  return sendEmail({ to, subject, text });
 };

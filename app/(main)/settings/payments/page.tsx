@@ -2,7 +2,12 @@ import PageShell from "@/components/ui/PageShell";
 
 export default function PaymentSettingsPage() {
   return (
-    <PageShell title="Payments" subtitle="Billing and methods.">
+    <PageShell
+      title="Payments"
+      subtitle="Billing and methods."
+      backHref="/settings"
+      backLabel="Back to settings"
+    >
       <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
         <div className="space-y-4">
           <p className="text-sm text-neutral-600">
