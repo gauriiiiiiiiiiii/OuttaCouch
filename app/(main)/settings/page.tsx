@@ -1,0 +1,108 @@
+"use client";
+
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { signOut } from "next-auth/react";
+import PageShell from "@/components/ui/PageShell";
+
+const sections = [
+  {
+    title: "Account",
+    links: [
+      { href: "/profile/edit", label: "Edit profile" },
+      { href: "/settings/privacy", label: "Privacy" }
+    ]
+  },
+  {
+    title: "Notifications",
+    links: [{ href: "/settings/notifications", label: "Notification settings" }]
+  },
+  {
+    title: "Payments",
+    links: [{ href: "/settings/payments", label: "Payment methods" }]
+  },
+  {
+    title: "Host tools",
+    links: [{ href: "/settings/host", label: "Host dashboard" }]
+  }
+];
+
+export default function SettingsPage() {
+  const [deactivating, setDeactivating] = useState(false);
+
+  const handleDeactivate = async () => {
+    const confirmed = window.confirm(
+      "Deactivate your account? You can reactivate by logging in again."
+    );
+    if (!confirmed) {
+      return;
+    }
+    setDeactivating(true);
+    const res = await fetch("/api/users/me", { method: "DELETE" });
+    setDeactivating(false);
+    if (res.ok) {
+      await signOut({ callbackUrl: "/login" });
+    }
+  };
+
+  return (
+    <PageShell title="Settings" subtitle="Manage account and privacy.">
+      <div className="space-y-6">
+        <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+          <h2 className="text-lg font-semibold">Account hub</h2>
+          <p className="text-sm text-neutral-500">
+            Keep your privacy, payments, and hosting tools in sync.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {sections.map((section) => (
+            <div
+              key={section.title}
+              className="rounded-2xl border border-neutral-200 bg-white/90 p-6"
+            >
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-ocean">
+                {section.title}
+              </h2>
+              <div className="mt-3 space-y-2">
+                {section.links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="block rounded-xl border border-neutral-200 bg-white/95 px-4 py-3 text-sm font-semibold shadow-sm"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-red-500">
+            Deactivate account
+          </h2>
+          <p className="mt-2 text-sm text-neutral-600">
+            This hides your profile and removes you from search. You can log back in
+            any time to reactivate.
+          </p>
+          <button
+            type="button"
+            onClick={handleDeactivate}
+            disabled={deactivating}
+            className="mt-4 rounded-full border border-red-300 px-5 py-2 text-sm font-semibold text-red-600"
+          >
+            {deactivating ? "Deactivating..." : "Deactivate account"}
+          </button>
+        </div>
+        <button
+          className="rounded-full border border-neutral-300 px-5 py-2 text-sm font-semibold"
+          onClick={() => signOut({ callbackUrl: "/" })}
+        >
+          Log out
+        </button>
+      </div>
+    </PageShell>
+  );
+}

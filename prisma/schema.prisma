@@ -1,0 +1,261 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Visibility {
+  private
+  connections
+  public
+}
+
+enum ApprovalMode {
+  auto
+  manual
+}
+
+enum EventStatus {
+  upcoming
+  ongoing
+  past
+  cancelled
+}
+
+enum AttendeeStatus {
+  committed
+  attended
+  missed
+  waitlisted
+}
+
+enum ConnectionStatus {
+  pending
+  accepted
+  declined
+  removed
+}
+
+enum MessageType {
+  text
+  event_card
+  location
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  refunded
+  failed
+}
+
+model User {
+  id                 String      @id @default(uuid())
+  email              String?     @unique
+  phone              String?     @unique
+  passwordHash       String      @map("password_hash")
+  displayName        String?     @map("display_name")
+  bio                String?
+  profilePhotoUrl    String?     @map("profile_photo_url")
+  city               String?
+  lat                Decimal?
+  lng                Decimal?
+  preferences        String[]    @default([])
+  calendarVisibility Visibility  @default(connections) @map("calendar_visibility")
+  profileVisibility  Visibility  @default(public) @map("profile_visibility")
+  profileComplete    Boolean     @default(false) @map("profile_complete")
+  isDeactivated      Boolean     @default(false) @map("is_deactivated")
+  deactivatedAt      DateTime?   @map("deactivated_at")
+  isVerifiedHost     Boolean     @default(false) @map("is_verified_host")
+  stripeCustomerId   String?     @map("stripe_customer_id")
+  stripeAccountId    String?     @map("stripe_account_id")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  eventsHosted       Event[]     @relation("HostedEvents")
+  eventAttendees     EventAttendee[]
+  tickets            Ticket[]
+  connectionsSent    Connection[] @relation("ConnectionsSent")
+  connectionsReceived Connection[] @relation("ConnectionsReceived")
+  messages           Message[]
+  otpTokens          OtpToken[]
+  notifications      Notification[]
+  memories           Memory[]
+
+  @@map("users")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model OtpToken {
+  id         String   @id @default(uuid())
+  contact    String
+  codeHash   String   @map("code_hash")
+  purpose    String
+  verifiedAt DateTime? @map("verified_at")
+  usedAt     DateTime? @map("used_at")
+  expiresAt  DateTime  @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  userId     String?   @map("user_id")
+
+  user       User?     @relation(fields: [userId], references: [id])
+
+  @@map("otp_tokens")
+}
+
+model Event {
+  id               String       @id @default(uuid())
+  hostId           String       @map("host_id")
+  title            String
+  descriptionShort String       @map("description_short")
+  descriptionFull  String       @map("description_full")
+  category         String
+  eventDate        DateTime     @map("event_date")
+  startTime        DateTime     @map("start_time")
+  endTime          DateTime?    @map("end_time")
+  venueName        String       @map("venue_name")
+  address          String
+  lat              Decimal
+  lng              Decimal
+  isFree           Boolean      @map("is_free")
+  ticketPrice      Decimal?     @map("ticket_price")
+  currency         String       @default("INR")
+  maxAttendees     Int          @map("max_attendees")
+  currentAttendees Int          @default(0) @map("current_attendees")
+  approvalMode     ApprovalMode @map("approval_mode")
+  visibility       Visibility
+  coverImageUrl    String       @map("cover_image_url")
+  status           EventStatus
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  host             User         @relation("HostedEvents", fields: [hostId], references: [id])
+  images           EventImage[]
+  attendees        EventAttendee[]
+  tickets          Ticket[]
+  sharedConnections Connection[]
+  memories        Memory[]
+
+  @@map("events")
+}
+
+model EventImage {
+  id         String  @id @default(uuid())
+  eventId    String  @map("event_id")
+  imageUrl   String  @map("image_url")
+  isCover    Boolean @default(false) @map("is_cover")
+  orderIndex Int     @default(0) @map("order_index")
+
+  event      Event   @relation(fields: [eventId], references: [id])
+
+  @@map("event_images")
+}
+
+model EventAttendee {
+  id         String         @id @default(uuid())
+  eventId    String         @map("event_id")
+  userId     String         @map("user_id")
+  ticketId   String?        @map("ticket_id")
+  status     AttendeeStatus
+  approvedAt DateTime?      @map("approved_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  event      Event          @relation(fields: [eventId], references: [id])
+  user       User           @relation(fields: [userId], references: [id])
+  ticket     Ticket?        @relation(fields: [ticketId], references: [id])
+
+  @@map("event_attendees")
+}
+
+model Ticket {
+  id              String        @id @default(uuid())
+  eventId         String        @map("event_id")
+  userId          String        @map("user_id")
+  quantity        Int
+  amountPaid      Decimal       @map("amount_paid")
+  currency        String
+  paymentIntentId String        @map("payment_intent_id")
+  paymentStatus   PaymentStatus @map("payment_status")
+  qrCode          String        @unique @map("qr_code")
+  qrValidated     Boolean       @default(false) @map("qr_validated")
+  validatedAt     DateTime?     @map("validated_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  event           Event         @relation(fields: [eventId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
+  attendees       EventAttendee[]
+
+  @@map("tickets")
+}
+
+model Connection {
+  id            String           @id @default(uuid())
+  user1Id       String           @map("user1_id")
+  user2Id       String           @map("user2_id")
+  status        ConnectionStatus
+  sharedEventId String?          @map("shared_event_id")
+  requestedAt   DateTime         @default(now()) @map("requested_at")
+  acceptedAt    DateTime?        @map("accepted_at")
+
+  user1         User             @relation("ConnectionsSent", fields: [user1Id], references: [id])
+  user2         User             @relation("ConnectionsReceived", fields: [user2Id], references: [id])
+  sharedEvent   Event?           @relation(fields: [sharedEventId], references: [id])
+  messages      Message[]
+
+  @@map("connections")
+}
+
+model Message {
+  id           String      @id @default(uuid())
+  connectionId String      @map("connection_id")
+  senderId     String      @map("sender_id")
+  content      String
+  type         MessageType
+  metadata     Json?
+  sentAt       DateTime    @default(now()) @map("sent_at")
+  readAt       DateTime?   @map("read_at")
+
+  connection   Connection  @relation(fields: [connectionId], references: [id])
+  sender       User        @relation(fields: [senderId], references: [id])
+
+  @@map("messages")
+}
+
+model Memory {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  eventId   String?  @map("event_id")
+  imageUrl  String   @map("image_url")
+  caption   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id])
+  event     Event?   @relation(fields: [eventId], references: [id])
+
+  @@map("memories")
+}
+
+model EventSwipe {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  eventId   String   @map("event_id")
+  action    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("event_swipes")
+}
