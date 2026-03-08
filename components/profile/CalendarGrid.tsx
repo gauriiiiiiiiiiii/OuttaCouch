@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   addMonths,
   eachDayOfInterval,
@@ -36,9 +37,8 @@ const categoryColors: Record<string, string> = {
 export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
   const now = new Date();
   const baseMonth = startOfMonth(now);
-  const months = Array.from({ length: 6 }, (_, index) =>
-    addMonths(baseMonth, index - 1)
-  );
+  const [monthOffset, setMonthOffset] = useState(0);
+  const month = addMonths(baseMonth, monthOffset);
 
   const eventsByDay = events.reduce<Record<string, CalendarEvent[]>>(
     (acc, event) => {
@@ -54,9 +54,25 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-            {format(now, "MMMM yyyy")}
+            {format(month, "MMMM yyyy")}
           </p>
           <p className="text-sm text-neutral-600">Your attendance trail.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold"
+            onClick={() => setMonthOffset((prev) => prev - 1)}
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold"
+            onClick={() => setMonthOffset((prev) => prev + 1)}
+          >
+            Next
+          </button>
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-neutral-500">
           {Object.keys(categoryColors).slice(0, 4).map((category) => (
@@ -74,56 +90,49 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
           </div>
         ))}
       </div>
-      <div className="mt-4 max-h-[520px] space-y-6 overflow-y-auto pr-2">
-        {months.map((month) => {
-          const start = startOfWeek(startOfMonth(month));
-          const end = endOfWeek(endOfMonth(month));
-          const days = eachDayOfInterval({ start, end });
-          const isCurrentMonth = isSameMonth(month, now);
-          return (
-            <div key={format(month, "yyyy-MM")}
-              className="rounded-2xl border border-neutral-200 bg-white/95 p-4"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-                  {format(month, "MMMM yyyy")}
-                </p>
-                {isCurrentMonth ? (
-                  <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500">
-                    Current
-                  </span>
-                ) : null}
-              </div>
-              <div className="grid grid-cols-7 gap-2">
-                {days.map((day) => {
-                  const key = format(day, "yyyy-MM-dd");
-                  const dayEvents = eventsByDay[key] ?? [];
-                  const inMonth = isSameMonth(day, month);
-                  return (
-                    <div
-                      key={key}
-                      className={`rounded-lg border border-neutral-100 p-2 text-center text-xs ${
-                        inMonth ? "bg-white" : "bg-neutral-50 opacity-50"
-                      } ${isToday(day) ? "ring-2 ring-ink" : ""}`}
-                    >
-                      <div className="text-neutral-700">{format(day, "d")}</div>
-                      <div className="mt-1 flex justify-center gap-1">
-                        {dayEvents.slice(0, 3).map((event) => (
-                          <span
-                            key={event.id}
-                            className={`h-2 w-2 rounded-full ${
-                              categoryColors[event.category] ?? "bg-neutral-500"
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+      <div className="mt-4">
+        <div className="rounded-2xl border border-neutral-200 bg-white/95 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+              {format(month, "MMMM yyyy")}
+            </p>
+            {isSameMonth(month, now) ? (
+              <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500">
+                Current
+              </span>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-7 gap-2">
+            {eachDayOfInterval({
+              start: startOfWeek(startOfMonth(month)),
+              end: endOfWeek(endOfMonth(month))
+            }).map((day) => {
+              const key = format(day, "yyyy-MM-dd");
+              const dayEvents = eventsByDay[key] ?? [];
+              const inMonth = isSameMonth(day, month);
+              return (
+                <div
+                  key={key}
+                  className={`rounded-lg border border-neutral-100 p-2 text-center text-xs ${
+                    inMonth ? "bg-white" : "bg-neutral-50 opacity-50"
+                  } ${isToday(day) ? "ring-2 ring-ink" : ""}`}
+                >
+                  <div className="text-neutral-700">{format(day, "d")}</div>
+                  <div className="mt-1 flex justify-center gap-1">
+                    {dayEvents.slice(0, 3).map((event) => (
+                      <span
+                        key={event.id}
+                        className={`h-2 w-2 rounded-full ${
+                          categoryColors[event.category] ?? "bg-neutral-500"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

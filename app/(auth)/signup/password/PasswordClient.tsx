@@ -37,7 +37,8 @@ export default function PasswordClient() {
     setLoading(false);
 
     if (!res.ok) {
-      setError("Could not set password.");
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      setError(data?.error || "Could not set password.");
       return;
     }
 
