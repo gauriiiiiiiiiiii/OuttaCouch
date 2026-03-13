@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import { normalizeContact } from "@/lib/normalizeContact";
 
 type VerifyOtpBody = {
   contact: string;
@@ -14,7 +15,7 @@ function hashCode(code: string) {
 
 export async function POST(request: Request) {
   const body = (await request.json()) as VerifyOtpBody;
-  const contact = body.contact?.trim();
+  const contact = normalizeContact(body.contact);
   const otp = body.otp?.trim();
 
   if (!contact || !otp) {

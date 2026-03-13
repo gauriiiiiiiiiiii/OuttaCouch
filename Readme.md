@@ -36,6 +36,7 @@ Create a `.env.local` file with:
 
 ```
 DATABASE_URL=
+DIRECT_URL=
 NEXTAUTH_SECRET=
 NEXTAUTH_URL=
 EMAIL_USER=

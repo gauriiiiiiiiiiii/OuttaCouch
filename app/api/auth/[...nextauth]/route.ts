@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { normalizeContact } from "@/lib/normalizeContact";
 
 const handler = NextAuth({
   providers: [
@@ -12,7 +13,7 @@ const handler = NextAuth({
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        const contact = credentials?.contact?.trim();
+        const contact = normalizeContact(credentials?.contact);
         const password = credentials?.password || "";
 
         if (!contact || !password) {

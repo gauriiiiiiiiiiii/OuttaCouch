@@ -320,6 +320,7 @@ Create public buckets in Supabase:
 Required:
 
 - DATABASE_URL
+- DIRECT_URL
 - NEXTAUTH_SECRET
 - NEXTAUTH_URL
 - EMAIL_USER

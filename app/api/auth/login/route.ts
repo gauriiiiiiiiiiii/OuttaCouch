@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { normalizeContact } from "@/lib/normalizeContact";
 
 type LoginBody = {
   contact: string;
@@ -9,7 +10,7 @@ type LoginBody = {
 
 export async function POST(request: Request) {
   const body = (await request.json()) as LoginBody;
-  const contact = body.contact?.trim();
+  const contact = normalizeContact(body.contact);
 
   if (!contact || !body.password) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });

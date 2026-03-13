@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { normalizeContact } from "@/lib/normalizeContact";
 
 type ResetBody = {
   contact: string;
@@ -10,7 +11,7 @@ type ResetBody = {
 
 export async function POST(request: Request) {
   const body = (await request.json()) as ResetBody;
-  const contact = body.contact?.trim();
+  const contact = normalizeContact(body.contact);
 
   if (!contact || !body.password || !body.token) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -22,6 +23,10 @@ export async function POST(request: Request) {
 
   if (!otpToken || otpToken.contact !== contact || !otpToken.verifiedAt) {
     return NextResponse.json({ error: "OTP not verified" }, { status: 400 });
+  }
+
+  if (otpToken.expiresAt < new Date()) {
+    return NextResponse.json({ error: "OTP expired" }, { status: 400 });
   }
 
   if (otpToken.usedAt) {

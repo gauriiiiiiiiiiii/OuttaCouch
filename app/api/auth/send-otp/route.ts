@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import { normalizeContact } from "@/lib/normalizeContact";
 import { sendEmail } from "@/lib/sendEmail";
 
 type SendOtpBody = {
@@ -15,7 +16,7 @@ function hashCode(code: string) {
 
 export async function POST(request: Request) {
   const body = (await request.json()) as SendOtpBody;
-  const contact = body.contact?.trim();
+  const contact = normalizeContact(body.contact);
 
   if (!contact) {
     return NextResponse.json({ error: "Contact required" }, { status: 400 });
