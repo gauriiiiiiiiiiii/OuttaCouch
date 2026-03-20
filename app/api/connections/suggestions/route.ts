@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   const me = await prisma.user.findUnique({
     where: { id: token.sub },
-    select: { lat: true, lng: true, preferences: true }
+    select: { lat: true, lng: true, preferences: true, city: true }
   });
 
   const myAttendances = await prisma.eventAttendee.findMany({
