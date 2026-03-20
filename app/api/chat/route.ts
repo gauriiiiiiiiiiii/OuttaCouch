@@ -32,19 +32,20 @@ export async function GET(request: NextRequest) {
   };
 
   const chats = connections
+    .filter((connection) => connection.messages.length > 0)
     .map((connection) => {
-    const other = connection.user1Id === token.sub ? connection.user2 : connection.user1;
-    const lastMessage = connection.messages[0];
-    const score = recencyScore(lastMessage?.sentAt ?? null);
-    return {
-      connectionId: connection.id,
-      name: other.displayName ?? other.email ?? "User",
-      photo: other.profilePhotoUrl,
-      lastMessage: lastMessage?.content ?? "",
-      lastAt: lastMessage?.sentAt ?? null,
-      score
-    };
-  })
+      const other = connection.user1Id === token.sub ? connection.user2 : connection.user1;
+      const lastMessage = connection.messages[0];
+      const score = recencyScore(lastMessage?.sentAt ?? null);
+      return {
+        connectionId: connection.id,
+        name: other.displayName ?? other.email ?? "User",
+        photo: other.profilePhotoUrl,
+        lastMessage: lastMessage?.content ?? "",
+        lastAt: lastMessage?.sentAt ?? null,
+        score
+      };
+    })
     .sort((a, b) => b.score - a.score);
 
   return NextResponse.json({

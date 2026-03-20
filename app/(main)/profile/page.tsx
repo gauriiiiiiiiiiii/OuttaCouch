@@ -109,11 +109,11 @@ export default function ProfilePage() {
             </button>
             <button
               className="rounded-2xl border border-neutral-200 bg-white/90 px-4 py-3 text-left text-sm font-semibold shadow-sm"
-              onClick={() => router.push("/profile/calendar")}
+              onClick={() => router.push("/events/manage")}
             >
-              Calendar
+              Hosted events
               <p className="mt-1 text-xs text-neutral-500">
-                See your event cadence.
+                Edit, delete, or update your events.
               </p>
             </button>
           </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import PageShell from "@/components/ui/PageShell";
 import { StorageService } from "@/lib/services/storage";
@@ -45,6 +45,7 @@ type EventImage = {
 export default function HostDashboardPage() {
   const params = useParams();
   const id = params?.id as string;
+  const router = useRouter();
   const [event, setEvent] = useState<HostEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [images, setImages] = useState<EventImage[]>([]);
@@ -151,6 +152,22 @@ export default function HostDashboardPage() {
     }
   };
 
+  const handleDeleteEvent = async () => {
+    if (!event) {
+      return;
+    }
+    const confirmed = window.confirm("Delete this event? This cannot be undone.");
+    if (!confirmed) {
+      return;
+    }
+    const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setActionStatus("Could not delete event.");
+      return;
+    }
+    router.push("/events/manage");
+  };
+
   const handleDownloadAttendees = () => {
     if (!event) {
       return;
@@ -189,6 +206,19 @@ export default function HostDashboardPage() {
                 <p className="text-sm text-neutral-600">{event.date}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/events/manage/${event.id}/edit`}
+                  className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold"
+                >
+                  Edit event
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleDeleteEvent}
+                  className="rounded-full border border-red-300 px-4 py-2 text-xs font-semibold text-red-600"
+                >
+                  Delete event
+                </button>
                 <Link
                   href={`/events/manage/${event.id}/scanner`}
                   className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold"

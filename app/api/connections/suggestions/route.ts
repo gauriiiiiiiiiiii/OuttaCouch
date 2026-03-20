@@ -19,9 +19,6 @@ export async function GET(request: NextRequest) {
   });
 
   const eventIds = myAttendances.map((item) => item.eventId);
-  if (eventIds.length === 0) {
-    return NextResponse.json({ suggestions: [] });
-  }
 
   const existingConnections = await prisma.connection.findMany({
     where: {
@@ -38,28 +35,31 @@ export async function GET(request: NextRequest) {
       )
   );
 
-  const shared = await prisma.eventAttendee.findMany({
-    where: {
-      eventId: { in: eventIds },
-      userId: { not: token.sub, notIn: Array.from(blockedUserIds) }
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          displayName: true,
-          email: true,
-          profilePhotoUrl: true,
-          lat: true,
-          lng: true,
-          preferences: true
+  const shared = eventIds.length
+    ? await prisma.eventAttendee.findMany({
+        where: {
+          eventId: { in: eventIds },
+          userId: { not: token.sub, notIn: Array.from(blockedUserIds) }
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+              email: true,
+              profilePhotoUrl: true,
+              lat: true,
+              lng: true,
+              preferences: true,
+              city: true
+            }
+          },
+          event: {
+            select: { id: true, title: true, eventDate: true, category: true }
+          }
         }
-      },
-      event: {
-        select: { id: true, title: true, eventDate: true, category: true }
-      }
-    }
-  });
+      })
+    : [];
 
   const myPrefs = new Set(me?.preferences ?? []);
 
@@ -106,8 +106,8 @@ export async function GET(request: NextRequest) {
         userId: string;
         name: string;
         photo?: string | null;
-        sharedEventTitle: string;
-        sharedEventId: string;
+        sharedEventTitle: string | null;
+        sharedEventId: string | null;
         sharedCount: number;
         latestSharedAt: Date;
         score: number;
@@ -154,6 +154,62 @@ export async function GET(request: NextRequest) {
     };
     return acc;
   }, {});
+
+  const TARGET_SUGGESTIONS = 10;
+
+  if (Object.keys(suggestionsMap).length < TARGET_SUGGESTIONS) {
+    const baseWhere: Record<string, unknown> = {
+      id: { notIn: [token.sub, ...Array.from(blockedUserIds)] },
+      isDeactivated: false
+    };
+    const orFilters: Record<string, unknown>[] = [];
+    if (me?.preferences?.length) {
+      orFilters.push({ preferences: { hasSome: me.preferences } });
+    }
+    if (me?.city) {
+      orFilters.push({ city: me.city });
+    }
+
+    const discoverUsers = await prisma.user.findMany({
+      where: orFilters.length > 0 ? { ...baseWhere, OR: orFilters } : baseWhere,
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+        profilePhotoUrl: true,
+        preferences: true,
+        lat: true,
+        lng: true,
+        city: true
+      },
+      take: 24
+    });
+
+    for (const user of discoverUsers) {
+      if (suggestionsMap[user.id]) {
+        continue;
+      }
+      const prefScore = preferenceScore(user.preferences ?? []);
+      const distance = distanceScore(
+        me?.lat !== null && me?.lat !== undefined ? Number(me.lat) : null,
+        me?.lng !== null && me?.lng !== undefined ? Number(me.lng) : null,
+        user.lat !== null && user.lat !== undefined ? Number(user.lat) : null,
+        user.lng !== null && user.lng !== undefined ? Number(user.lng) : null
+      );
+      const cityBoost = me?.city && user.city && me.city === user.city ? 0.2 : 0;
+      const score = prefScore * 0.55 + distance * 0.25 + cityBoost;
+      suggestionsMap[user.id] = {
+        userId: user.id,
+        name: user.displayName ?? user.email ?? "User",
+        photo: user.profilePhotoUrl,
+        sharedEventTitle: null,
+        sharedEventId: null,
+        sharedCount: 0,
+        latestSharedAt: new Date(),
+        score
+      };
+    }
+  }
 
   const candidateIds = Object.keys(suggestionsMap);
   const acceptedConnections = await prisma.connection.findMany({

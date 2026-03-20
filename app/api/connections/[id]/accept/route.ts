@@ -25,6 +25,20 @@ export async function PUT(
     data: { status: "accepted", acceptedAt: new Date() }
   });
 
+  const existingMessage = await prisma.message.findFirst({
+    where: { connectionId: updated.id }
+  });
+  if (!existingMessage) {
+    await prisma.message.create({
+      data: {
+        connectionId: updated.id,
+        senderId: token.sub,
+        content: "Connection accepted. Start the conversation!",
+        type: "text"
+      }
+    });
+  }
+
   const requester = await prisma.user.findUnique({
     where: { id: connection.user1Id },
     select: { email: true }

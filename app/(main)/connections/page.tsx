@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import PageShell from "@/components/ui/PageShell";
 import { motion, useMotionValue, useTransform } from "framer-motion";
 
@@ -8,9 +8,17 @@ type Suggestion = {
   userId: string;
   name: string;
   photo?: string | null;
-  sharedEventTitle: string;
-  sharedEventId: string;
+  sharedEventTitle?: string | null;
+  sharedEventId?: string | null;
   sharedCount: number;
+};
+
+type DiscoverUser = {
+  userId: string;
+  name: string;
+  photo?: string | null;
+  city?: string | null;
+  matchReason?: string | null;
 };
 
 type Connection = {
@@ -35,6 +43,10 @@ export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [requests, setRequests] = useState<ConnectionRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [discoverQuery, setDiscoverQuery] = useState("");
+  const [discoverResults, setDiscoverResults] = useState<DiscoverUser[]>([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [swipeAction, setSwipeAction] = useState<
     "left" | "right" | "up" | "down" | null
@@ -79,13 +91,60 @@ export default function ConnectionsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const query = discoverQuery.trim();
+    if (query.length < 2) {
+      setDiscoverResults([]);
+      setDiscoverLoading(false);
+      setDiscoverError(null);
+      return () => {
+        active = false;
+      };
+    }
+    setDiscoverLoading(true);
+    setDiscoverError(null);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/connections/discover?query=${encodeURIComponent(query)}`);
+        const data = res.ok
+          ? ((await res.json()) as { results: DiscoverUser[] })
+          : { results: [] };
+        if (active) {
+          setDiscoverResults(data.results ?? []);
+        }
+      } catch (err) {
+        if (active) {
+          setDiscoverError("Could not search right now.");
+        }
+      } finally {
+        if (active) {
+          setDiscoverLoading(false);
+        }
+      }
+    }, 350);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [discoverQuery]);
+
   const handleConnect = async (suggestion: Suggestion) => {
     await fetch(`/api/connections/request/${suggestion.userId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sharedEventId: suggestion.sharedEventId })
+      body: JSON.stringify({ sharedEventId: suggestion.sharedEventId ?? null })
     });
     setSuggestions((prev) => prev.filter((item) => item.userId !== suggestion.userId));
+  };
+
+  const handleDiscoverConnect = async (userId: string) => {
+    await fetch(`/api/connections/request/${userId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    setDiscoverResults((prev) => prev.filter((item) => item.userId !== userId));
   };
 
   const handleSkip = (userId: string) => {
@@ -141,34 +200,65 @@ export default function ConnectionsPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-2xl border border-neutral-200 bg-white/90 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">Suggested</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">
-                {suggestions.length}
-              </p>
+          <section className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Find friends</h2>
+                <p className="text-sm text-neutral-500">
+                  Search by name or email to connect directly.
+                </p>
+              </div>
+              <input
+                value={discoverQuery}
+                onChange={(event) => setDiscoverQuery(event.target.value)}
+                className="w-full rounded-full border border-neutral-200 px-4 py-2 text-sm md:w-72"
+                placeholder="Search by name or email"
+              />
             </div>
-            <div className="rounded-2xl border border-neutral-200 bg-white/90 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">Requests</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">
-                {requests.length}
-              </p>
+            <div className="mt-4 space-y-3">
+              {discoverQuery.trim().length < 2 ? (
+                <p className="text-sm text-neutral-600">Start typing to find people.</p>
+              ) : discoverLoading ? (
+                <p className="text-sm text-neutral-600">Searching...</p>
+              ) : discoverError ? (
+                <p className="text-sm text-red-600">{discoverError}</p>
+              ) : discoverResults.length === 0 ? (
+                <p className="text-sm text-neutral-600">No matches found.</p>
+              ) : (
+                discoverResults.map((result) => (
+                  <div
+                    key={result.userId}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-neutral-200 bg-white/95 p-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-full bg-neutral-200">
+                        {result.photo ? (
+                          <img
+                            src={result.photo}
+                            alt={result.name}
+                            className="h-full w-full rounded-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">{result.name}</p>
+                        <p className="text-xs text-neutral-500">
+                          {result.matchReason ?? result.city ?? "Suggested for you"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDiscoverConnect(result.userId)}
+                      className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-parchment"
+                    >
+                      Connect
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
-            <div className="rounded-2xl border border-neutral-200 bg-white/90 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">Connections</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">
-                {connections.length}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-neutral-200 bg-white/90 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-                Shared events
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-ink">
-                {suggestions.reduce((total, item) => total + item.sharedCount, 0)}
-              </p>
-            </div>
-          </div>
+          </section>
           <section className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -333,13 +423,17 @@ export default function ConnectionsPage() {
                             {activeSuggestion.name}
                           </div>
                           <div className="text-sm text-neutral-500">
-                            Shared: {activeSuggestion.sharedEventTitle}
+                            {activeSuggestion.sharedEventTitle
+                              ? `Shared: ${activeSuggestion.sharedEventTitle}`
+                              : "Suggested for you"}
                           </div>
                         </div>
                       </div>
                       <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
                         <span className="rounded-full border border-neutral-200 px-3 py-1">
-                          {activeSuggestion.sharedCount} shared events
+                          {activeSuggestion.sharedCount > 0
+                            ? `${activeSuggestion.sharedCount} shared events`
+                            : "Relevant match"}
                         </span>
                         <span className="rounded-full border border-neutral-200 px-3 py-1">
                           Swipe to decide
@@ -374,42 +468,6 @@ export default function ConnectionsPage() {
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
-          </section>
-          <section className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">My connections</h2>
-                <p className="text-sm text-neutral-500">
-                  Start a chat or plan your next hang.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {connections.length === 0 ? (
-                <p className="text-sm text-neutral-600">No connections yet.</p>
-              ) : (
-                connections.map((connection) => (
-                  <div
-                    key={connection.id}
-                    className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white/95 px-4 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-neutral-200">
-                        {connection.photo ? (
-                          <img
-                            src={connection.photo}
-                            alt={connection.name}
-                            className="h-full w-full rounded-full object-cover"
-                          />
-                        ) : null}
-                      </div>
-                      <div className="font-semibold">{connection.name}</div>
-                    </div>
-                    <span className="text-xs text-neutral-500">Connected</span>
-                  </div>
-                ))
               )}
             </div>
           </section>

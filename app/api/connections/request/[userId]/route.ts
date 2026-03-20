@@ -34,6 +34,19 @@ export async function POST(
         where: { id: existing.id },
         data: { status: "accepted", acceptedAt: new Date() }
       });
+      const existingMessage = await prisma.message.findFirst({
+        where: { connectionId: updated.id }
+      });
+      if (!existingMessage) {
+        await prisma.message.create({
+          data: {
+            connectionId: updated.id,
+            senderId: token.sub,
+            content: "Connection accepted. Start the conversation!",
+            type: "text"
+          }
+        });
+      }
       await prisma.notification.create({
         data: {
           userId: existing.user1Id,
@@ -67,6 +80,19 @@ export async function POST(
       where: { id: reciprocal.id },
       data: { status: "accepted", acceptedAt: new Date() }
     });
+    const existingMessage = await prisma.message.findFirst({
+      where: { connectionId: updated.id }
+    });
+    if (!existingMessage) {
+      await prisma.message.create({
+        data: {
+          connectionId: updated.id,
+          senderId: token.sub,
+          content: "Connection accepted. Start the conversation!",
+          type: "text"
+        }
+      });
+    }
     await prisma.notification.create({
       data: {
         userId: reciprocal.user1Id,

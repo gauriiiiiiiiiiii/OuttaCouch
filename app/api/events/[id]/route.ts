@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { format } from "date-fns";
+import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
@@ -92,5 +93,125 @@ export async function GET(
       revenueSeries
     }
   });
+}
+
+type UpdateEventBody = {
+  title: string;
+  descriptionShort?: string;
+  descriptionFull?: string;
+  category: string;
+  eventDate: string;
+  startTime: string;
+  endTime?: string;
+  venueName: string;
+  address: string;
+  lat: number;
+  lng: number;
+  isFree: boolean;
+  ticketPrice?: number;
+  maxAttendees: number;
+  coverImageUrl?: string;
+};
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const event = await prisma.event.findUnique({ where: { id: params.id } });
+  if (!event) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (event.hostId !== token.sub) {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
+
+  const body = (await request.json()) as UpdateEventBody;
+  if (
+    !body.title ||
+    !body.category ||
+    !body.eventDate ||
+    !body.startTime ||
+    !body.venueName ||
+    !body.address ||
+    body.lat === undefined ||
+    body.lng === undefined ||
+    !body.maxAttendees
+  ) {
+    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  const eventDate = new Date(`${body.eventDate}T00:00:00`);
+  const startTime = new Date(`${body.eventDate}T${body.startTime}:00`);
+  const endTime = body.endTime
+    ? new Date(`${body.eventDate}T${body.endTime}:00`)
+    : null;
+
+  const updated = await prisma.event.update({
+    where: { id: params.id },
+    data: {
+      title: body.title,
+      descriptionShort: body.descriptionShort || body.title,
+      descriptionFull: body.descriptionFull || body.descriptionShort || body.title,
+      category: body.category,
+      eventDate,
+      startTime,
+      endTime,
+      venueName: body.venueName,
+      address: body.address,
+      lat: body.lat,
+      lng: body.lng,
+      isFree: body.isFree,
+      ticketPrice: body.isFree ? null : body.ticketPrice ?? null,
+      maxAttendees: body.maxAttendees,
+      coverImageUrl:
+        body.coverImageUrl ||
+        "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee"
+    }
+  });
+
+  return NextResponse.json({ id: updated.id });
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const event = await prisma.event.findUnique({ where: { id: params.id } });
+  if (!event) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (event.hostId !== token.sub) {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
+
+  await prisma.$transaction([
+    prisma.connection.updateMany({
+      where: { sharedEventId: event.id },
+      data: { sharedEventId: null }
+    }),
+    prisma.memory.updateMany({
+      where: { eventId: event.id },
+      data: { eventId: null }
+    }),
+    prisma.eventSwipe.deleteMany({ where: { eventId: event.id } }),
+    prisma.eventImage.deleteMany({ where: { eventId: event.id } }),
+    prisma.eventAttendee.deleteMany({ where: { eventId: event.id } }),
+    prisma.ticket.deleteMany({ where: { eventId: event.id } }),
+    prisma.event.delete({ where: { id: event.id } })
+  ]);
+
+  return NextResponse.json({ status: "deleted" });
 }
 
