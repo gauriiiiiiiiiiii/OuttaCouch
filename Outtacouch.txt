@@ -1,0 +1,287 @@
+OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
+
+1) Project Overview
+- Problem statement: Social apps optimize for posts and likes, not real-world interaction. OUTTACOUCH anchors social identity to event attendance and uses shared event context to form connections and chats.
+- Motivation: Build meaningful connections by making events the primary unit and requiring attendance to unlock social graph features.
+
+2) High-Level Architecture
+- Frontend: Next.js 14 App Router with React 18 + TypeScript; pages split by route groups.
+  - Public/auth flows: app/(auth)
+  - Protected main app: app/(main)
+- Backend: Next.js API routes in app/api for auth, events, connections, chat, tickets, users, memories, notifications, storage, and webhooks.
+- Auth: NextAuth Credentials + JWT, plus OTP verification for signup/reset.
+- Data layer: Prisma ORM + PostgreSQL (Supabase) using pooled and direct connections.
+- Storage: Supabase Storage buckets for images (event, profile, memories).
+- Payments: Stripe PaymentIntents + webhook processing.
+- Realtime: Socket.io for chat delivery, read receipts, typing signals.
+- Access control: middleware.ts enforces authentication, deactivated user redirect, and onboarding completion.
+
+3) Architecture Flow (Happy Path)
+1) Signup via OTP: /api/auth/send-otp -> /api/auth/verify-otp -> /api/auth/register.
+2) Onboarding: /api/users/me/location then /api/users/me (profileComplete=true).
+3) Explore: /api/events returns ranked events; /api/events/swipe logs actions.
+4) Join event:
+   - Free: /api/events/:id/commit.
+   - Paid: /api/tickets/create-intent + /api/tickets/confirm.
+5) Attendance: Host scans QR -> /api/tickets/validate.
+6) Connections: /api/connections/suggestions + /api/connections/request/:userId.
+7) Accept: /api/connections/:id/accept (or auto-accept in request route) creates first chat message.
+8) Chat: /api/chat lists conversations, /api/chat/:connectionId for messages + Socket.io rooms.
+9) Memories: /api/memories upload/list.
+
+4) Tech Stack (Justified)
+- Next.js 14 + React 18: unified frontend and backend API routes.
+- TypeScript: strong typing across API payloads and UI.
+- Prisma + PostgreSQL: relational modeling with migrations and type-safe queries.
+- NextAuth: credential login with JWT sessions for App Router middleware checks.
+- Supabase Storage: managed file storage for image-heavy features.
+- Stripe: PCI-compliant payments and webhook-based confirmation.
+- Socket.io: realtime chat and read/typing events.
+- Tailwind CSS + Framer Motion + Leaflet + Recharts: UI styling, motion, maps, analytics.
+
+5) Project Structure (Important Directories)
+- app/
+  - (auth)/: login, signup, reset, onboarding flows.
+  - (main)/: explore, events, connections, chat, profile, settings.
+  - api/: backend endpoints.
+  - layout.tsx + globals.css: global layout and styling.
+- components/: UI/feature components (EventMap, MapPicker, ProfileHeader, MemoriesGrid, etc.).
+- lib/: shared services (prisma, supabase, stripe, socketServer, sendEmail).
+- prisma/: schema and migrations.
+- hooks/ + store/: client hooks and Zustand state.
+- pages/api/socketio.ts: Socket.io server bootstrap.
+- next.config.mjs: Next.js config (image domains, etc.).
+
+6) Core Features (Implementation Details)
+
+6.1 Authentication
+- OTP
+  - /api/auth/send-otp: generates 6-digit OTP, stores SHA-256 hash in otp_tokens with expiry.
+  - /api/auth/verify-otp: validates OTP, sets verifiedAt.
+- Register
+  - /api/auth/register: validates OTP token, hashes password, creates user, marks OTP used.
+- Login
+  - NextAuth Credentials: matches email/phone, checks bcrypt hash, rejects deactivated users.
+- Reset
+  - /api/auth/reset-password: verifies OTP and updates password hash.
+- Middleware
+  - middleware.ts: redirects unauthenticated to /login, forces onboarding until profileComplete.
+
+6.2 Events
+- Discovery
+  - /api/events GET: fetches top 50 events and scores using distance, preferences, recency, popularity, time proximity, and connections attending.
+- Creation
+  - /api/events POST: validates fields, creates event with schedule, venue, pricing, and cover image.
+- Details
+  - /api/events/:id GET: returns event detail, host info, gallery, attendees, revenue totals, analytics series.
+- Commit
+  - /api/events/:id/commit: free-only, no duplicates, respects maxAttendees, increments currentAttendees.
+- Host dashboard
+  - /events/manage/:id: analytics, attendees, gallery, edit/delete controls.
+- Edit/Update
+  - /api/events/:id/edit GET: returns form-ready fields (YYYY-MM-DD, HH:mm).
+  - /api/events/:id PUT: updates event, host-only.
+- Delete
+  - /api/events/:id DELETE: host-only, removes related attendees, tickets, images, swipes, and nulls shared connections/memories.
+- Gallery
+  - /api/events/:id/images: upload, reorder, set cover, delete.
+
+6.3 Tickets and QR
+- PaymentIntent
+  - /api/tickets/create-intent: Stripe PaymentIntent with event metadata.
+- Confirm
+  - /api/tickets/confirm: verifies payment, creates ticket + attendee, increments attendees.
+- Webhook
+  - /api/webhooks/stripe: payment_intent.succeeded is idempotent, creates ticket if missing.
+- Validate
+  - /api/tickets/validate: host-only QR validation sets qrValidated + attendee status.
+
+6.4 Connections
+- Suggestions
+  - /api/connections/suggestions: shared event attendance + relevance fallback.
+  - Scoring uses shared count, recency, distance, preference overlap, mutual connections.
+- Find friends
+  - /api/connections/discover?query= : search by name/email or fallback to preferences/city.
+- Requests
+  - /api/connections/request/:userId: create or accept reciprocal.
+  - /api/connections/:id/accept, /decline for manual flow.
+- Chat bootstrap
+  - Accept creates initial message so chat appears immediately in /api/chat.
+
+6.5 Chat
+- List
+  - /api/chat: returns only accepted connections with at least one message, sorted by recency.
+- Thread
+  - /api/chat/:connectionId GET/POST for message flow.
+- Read receipts
+  - /api/chat/:connectionId/read: updates readAt for other user messages and emits Socket.io event.
+- Realtime
+  - pages/api/socketio.ts boots Socket.io server; lib/socketServer.ts emits to rooms.
+
+6.6 Profile and Visibility
+- /api/users/me GET: user profile + stats + attendedEvents.
+- /api/users/me PUT: update profile fields and preferences.
+- /api/users/me/location PUT: save city/lat/lng.
+- /api/users/me/privacy PUT: set profileVisibility and calendarVisibility.
+- /api/users/:id GET: enforces privacy (private, connections-only, public).
+- /api/users/me DELETE: deactivates user and locks visibility.
+
+6.7 Memories
+- /api/memories GET/POST: user memories with optional event link.
+- Memories UI fetches attended events for tagging.
+
+6.8 Notifications
+- /api/notifications GET: latest 50 notifications.
+- /api/notifications/read-all PUT: mark unread as read.
+- /api/notifications/subscribe POST: records a subscription event.
+
+7) Detailed Working (Step-by-Step)
+- Auth flow
+  - OTP issued and hashed -> OTP verified -> account created -> NextAuth login.
+  - JWT includes profileComplete and isDeactivated; middleware checks on every protected route.
+- Explore flow
+  - Client fetches /api/events -> renders swipe deck or map.
+  - Swipe actions recorded in event_swipes.
+- Commit/ticket flow
+  - Free events -> commit route creates EventAttendee.
+  - Paid events -> Stripe PaymentIntent -> confirm route creates Ticket + attendee.
+  - Webhook ensures idempotent creation.
+- Connection flow
+  - Suggestions list from shared attendance or relevance fallback.
+  - Request -> accept creates Connection and first Message.
+- Chat flow
+  - Chat list shows conversations with messages.
+  - Thread joins Socket.io room, receives realtime messages, sends typing and read signals.
+
+8) Algorithms and Logic (Code-Based)
+- Event ranking (api/events GET)
+  - Score = location(0.30) + category(0.25) + time proximity(0.15) + connections attending(0.15) + popularity(0.10) + recency(0.05)
+  - Distance uses exponential decay based on km.
+- Connection suggestions
+  - Shared events: recency + shared count + distance + preference overlap.
+  - Fallback: preference overlap + distance + same-city boost.
+  - Mutual connections add ranking boost.
+- Chat ordering
+  - Recency decay based on last message time.
+
+9) API Design (Key Endpoints)
+- Auth
+  - POST /api/auth/send-otp {contact,type?,purpose?} -> {status}
+  - POST /api/auth/verify-otp {contact,otp,purpose?} -> {status,token}
+  - POST /api/auth/register {contact,password,token} -> {status}
+  - POST /api/auth/reset-password {contact,password,token} -> {status}
+- Events
+  - GET /api/events -> {events:[...], score}
+  - POST /api/events -> {id}
+  - GET /api/events/:id -> detail + analytics
+  - PUT /api/events/:id -> {id}
+  - DELETE /api/events/:id -> {status}
+  - POST /api/events/:id/commit -> {status}
+  - GET /api/events/host -> {events:[...]}
+  - POST /api/events/swipe -> {status}
+  - GET/POST/PUT/DELETE /api/events/:id/images -> {images|status}
+- Connections
+  - GET /api/connections/suggestions -> {suggestions:[...]}
+  - GET /api/connections/discover?query= -> {results:[...]}
+  - GET /api/connections/requests -> {requests:[...]}
+  - POST /api/connections/request/:userId -> {status,id}
+  - PUT /api/connections/:id/accept -> {status}
+  - PUT /api/connections/:id/decline -> {status}
+- Chat
+  - GET /api/chat -> {chats:[...]}
+  - GET /api/chat/:connectionId -> {messages:[...]}
+  - POST /api/chat/:connectionId -> {message}
+  - PUT /api/chat/:connectionId/read -> {status}
+- Tickets
+  - POST /api/tickets/create-intent {eventId,quantity} -> {client_secret,payment_intent_id,amount,currency}
+  - POST /api/tickets/confirm {eventId,quantity,paymentIntentId} -> {ticketId}
+  - POST /api/tickets/validate {qr_code,event_id} -> {status}
+  - GET /api/tickets/me -> {tickets:[...]}
+- Users
+  - GET /api/users/me
+  - PUT /api/users/me
+  - PUT /api/users/me/location
+  - PUT /api/users/me/privacy
+  - GET /api/users/:id
+- Storage
+  - POST /api/storage/upload (multipart) -> {publicUrl,path}
+
+10) Database Design (Prisma Schema)
+- User
+  - email/phone unique, passwordHash, profile info, location, preferences, visibility, deactivation flags.
+- Event
+  - hostId, details, schedule, venue coords, pricing, capacity, status, cover image.
+- EventImage
+  - eventId, imageUrl, isCover, orderIndex.
+- EventAttendee
+  - eventId, userId, ticketId?, status, approvedAt.
+- Ticket
+  - eventId, userId, quantity, amountPaid, paymentIntentId, qrCode, validation flags.
+- Connection
+  - user1Id, user2Id, status, sharedEventId, requestedAt, acceptedAt.
+- Message
+  - connectionId, senderId, content, type, sentAt, readAt.
+- Notification, OtpToken, Memory, EventSwipe.
+- Unique constraints: user.email, user.phone, ticket.qrCode.
+
+11) Performance Optimizations
+- Event ranking limits to 50 events and computes in-memory score.
+- Connection suggestions capped and filtered by blocked IDs.
+- Notifications limited to 50.
+- Upload endpoints return public URLs and avoid binary DB storage.
+
+12) Scalability Considerations
+- Pooled DATABASE_URL for runtime, DIRECT_URL for migrations.
+- API routes are stateless and scale horizontally.
+- Socket.io is single-node; needs Redis adapter for multi-node scaling.
+
+13) Edge Cases Handled
+- Paid vs free events: commit route blocks paid events.
+- Full events: commit checks currentAttendees >= maxAttendees.
+- Duplicate ticket/commit prevented by checks and webhook idempotency.
+- OTP expired/used enforcement.
+- Profile privacy enforced on /api/users/:id.
+- Deactivated users blocked in middleware.
+
+14) Security Considerations
+- Passwords hashed with bcryptjs.
+- OTP codes stored as SHA-256 hashes only.
+- JWT-based session with minimal sensitive claims.
+- Stripe webhook signature verification.
+- Supabase admin key required for uploads.
+- Chat access restricted to connection members.
+
+15) Challenges and Solutions
+- Realtime chat in App Router: handled with pages/api/socketio.ts and global Server ref for API routes.
+- Image upload security: server-side upload via /api/storage/upload avoids exposing service role key.
+- Empty connection suggestions: fallback relevance logic added (preferences + distance + city).
+
+16) Trade-offs and Design Decisions
+- Monolithic Next.js app simplifies development but couples API and UI.
+- Event-first connections prevent random DMs but increase relevance.
+- Chat list shows only active conversations to keep UI clean.
+
+17) Future Improvements
+- Add pagination and server-side filtering for events and connections.
+- Add Redis adapter for Socket.io scaling.
+- Add push notification provider and device tokens.
+- Add moderation/admin tools.
+- Add analytics pipeline for ranking tuning.
+
+18) Environment Variables (Required)
+- DATABASE_URL, DIRECT_URL
+- NEXTAUTH_SECRET, NEXTAUTH_URL
+- STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_KEY, STRIPE_WEBHOOK_SECRET
+- NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+- EMAIL_USER, EMAIL_PASS, EMAIL_FROM
+
+19) Supabase Buckets
+- event-images
+- profile-photos
+- memories
+
+20) Build/Deploy Notes
+- vercel-build runs prisma generate + next build.
+- prisma generate runs postinstall.
+- Ensure buckets exist and are public.
+- Run prisma migrate deploy in production if schema changes.
