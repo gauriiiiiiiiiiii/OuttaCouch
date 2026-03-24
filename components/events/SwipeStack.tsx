@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, useMotionValue, useTransform } from "framer-motion";
 import type { EventSummary } from "@/types";
 
@@ -10,6 +11,7 @@ type SwipeStackProps = {
 };
 
 export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
+  const router = useRouter();
   const [index, setIndex] = useState(0);
   const [swipeAction, setSwipeAction] = useState<
     "left" | "right" | "up" | "down" | null
@@ -31,6 +33,18 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
     }
     onSwipe(current, action);
     setSwipeAction(action);
+  };
+
+  const handleOpenDetails = () => {
+    if (!current || current.id.startsWith("dummy")) {
+      return;
+    }
+    const deltaX = Math.abs(x.get());
+    const deltaY = Math.abs(y.get());
+    if (deltaX > 4 || deltaY > 4) {
+      return;
+    }
+    router.push(`/events/${current.id}`);
   };
 
   if (!current) {
@@ -119,7 +133,17 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
         >
           SHARE
         </motion.div>
-        <div className="mb-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100">
+        <div
+          className="mb-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100"
+          onClick={handleOpenDetails}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              handleOpenDetails();
+            }
+          }}
+        >
           {current.imageUrl ? (
             <div className="relative">
               <img

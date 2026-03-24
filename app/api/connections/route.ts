@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     return {
       id: connection.id,
       userId: other.id,
-      name: other.displayName ?? other.email ?? "User",
+      name: other.displayName ?? other.email ?? other.phone ?? "Member",
       photo: other.profilePhotoUrl
     };
   });

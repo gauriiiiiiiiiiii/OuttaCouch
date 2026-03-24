@@ -4,112 +4,117 @@ import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-  const user = token?.sub
-    ? await prisma.user.findUnique({
-        where: { id: token.sub },
-        select: { lat: true, lng: true, preferences: true }
-      })
-    : null;
+  try {
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const user = token?.sub
+      ? await prisma.user.findUnique({
+          where: { id: token.sub },
+          select: { lat: true, lng: true, preferences: true }
+        })
+      : null;
 
-  const events = await prisma.event.findMany({
-    orderBy: { eventDate: "asc" },
-    take: 50
-  });
-
-  type EventRow = (typeof events)[number];
-  const eventIds = events.map((event: EventRow) => event.id);
-  let connectionEventIds = new Set<string>();
-
-  if (token?.sub) {
-    const connections = await prisma.connection.findMany({
-      where: {
-        status: "accepted",
-        OR: [{ user1Id: token.sub }, { user2Id: token.sub }]
-      }
+    const events = await prisma.event.findMany({
+      orderBy: { eventDate: "asc" },
+      take: 50
     });
-    const connectionIds = connections.map((connection: (typeof connections)[number]) =>
-      connection.user1Id === token.sub ? connection.user2Id : connection.user1Id
-    );
 
-    if (connectionIds.length > 0 && eventIds.length > 0) {
-      const sharedAttendance = await prisma.eventAttendee.findMany({
+    type EventRow = (typeof events)[number];
+    const eventIds = events.map((event: EventRow) => event.id);
+    let connectionEventIds = new Set<string>();
+
+    if (token?.sub) {
+      const connections = await prisma.connection.findMany({
         where: {
-          userId: { in: connectionIds },
-          eventId: { in: eventIds }
-        },
-        select: { eventId: true }
+          status: "accepted",
+          OR: [{ user1Id: token.sub }, { user2Id: token.sub }]
+        }
       });
-      connectionEventIds = new Set(
-        sharedAttendance.map((item: (typeof sharedAttendance)[number]) => item.eventId)
+      const connectionIds = connections.map((connection: (typeof connections)[number]) =>
+        connection.user1Id === token.sub ? connection.user2Id : connection.user1Id
       );
-    }
-  }
 
-  const now = Date.now();
-  const scored = events.map((event: EventRow) => {
-    const daysUntil = Math.max(
-      0,
-      Math.floor((event.eventDate.getTime() - now) / (1000 * 60 * 60 * 24))
-    );
-    const timeProximity = Math.max(0, 7 - daysUntil) / 7;
-    const popularity = Math.min(
-      1,
-      event.currentAttendees / Math.max(1, event.maxAttendees)
-    );
-    const recency =
-      Math.max(
+      if (connectionIds.length > 0 && eventIds.length > 0) {
+        const sharedAttendance = await prisma.eventAttendee.findMany({
+          where: {
+            userId: { in: connectionIds },
+            eventId: { in: eventIds }
+          },
+          select: { eventId: true }
+        });
+        connectionEventIds = new Set(
+          sharedAttendance.map((item: (typeof sharedAttendance)[number]) => item.eventId)
+        );
+      }
+    }
+
+    const now = Date.now();
+    const scored = events.map((event: EventRow) => {
+      const daysUntil = Math.max(
         0,
-        30 -
-          Math.floor((now - event.createdAt.getTime()) / (1000 * 60 * 60 * 24))
-      ) / 30;
+        Math.floor((event.eventDate.getTime() - now) / (1000 * 60 * 60 * 24))
+      );
+      const timeProximity = Math.max(0, 7 - daysUntil) / 7;
+      const popularity = Math.min(
+        1,
+        event.currentAttendees / Math.max(1, event.maxAttendees)
+      );
+      const recency =
+        Math.max(
+          0,
+          30 -
+            Math.floor((now - event.createdAt.getTime()) / (1000 * 60 * 60 * 24))
+        ) / 30;
 
-    let locationProximity = 0.5;
-    if (user && user.lat !== null && user.lng !== null && event.lat && event.lng) {
-      const toRad = (value: number) => (value * Math.PI) / 180;
-      const r = 6371;
-      const userLat = Number(user.lat);
-      const userLng = Number(user.lng);
-      const dLat = toRad(Number(event.lat) - userLat);
-      const dLng = toRad(Number(event.lng) - userLng);
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(userLat)) *
-          Math.cos(toRad(Number(event.lat))) *
-          Math.sin(dLng / 2) *
-          Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const distance = r * c;
-      locationProximity = Math.exp(-distance / 10);
-    }
+      let locationProximity = 0.5;
+      if (user && user.lat !== null && user.lng !== null && event.lat && event.lng) {
+        const toRad = (value: number) => (value * Math.PI) / 180;
+        const r = 6371;
+        const userLat = Number(user.lat);
+        const userLng = Number(user.lng);
+        const dLat = toRad(Number(event.lat) - userLat);
+        const dLng = toRad(Number(event.lng) - userLng);
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(userLat)) *
+            Math.cos(toRad(Number(event.lat))) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = r * c;
+        locationProximity = Math.exp(-distance / 10);
+      }
 
-    const categoryMatch = user?.preferences?.includes(event.category) ? 1 : 0;
-    const connectionsAttending = connectionEventIds.has(event.id) ? 1 : 0;
+      const categoryMatch = user?.preferences?.includes(event.category) ? 1 : 0;
+      const connectionsAttending = connectionEventIds.has(event.id) ? 1 : 0;
 
-    const score =
-      locationProximity * 0.3 +
-      categoryMatch * 0.25 +
-      timeProximity * 0.15 +
-      connectionsAttending * 0.15 +
-      popularity * 0.1 +
-      recency * 0.05;
+      const score =
+        locationProximity * 0.3 +
+        categoryMatch * 0.25 +
+        timeProximity * 0.15 +
+        connectionsAttending * 0.15 +
+        popularity * 0.1 +
+        recency * 0.05;
 
-    return {
-      id: event.id,
-      title: event.title,
-      category: event.category,
-      date: format(event.eventDate, "MMM d, yyyy"),
-      location: event.venueName,
-      imageUrl: event.coverImageUrl,
-      lat: event.lat ? Number(event.lat) : null,
-      lng: event.lng ? Number(event.lng) : null,
-      score
-    };
-  });
+      return {
+        id: event.id,
+        title: event.title,
+        category: event.category,
+        date: format(event.eventDate, "MMM d, yyyy"),
+        location: event.address,
+        imageUrl: event.coverImageUrl,
+        lat: event.lat ? Number(event.lat) : null,
+        lng: event.lng ? Number(event.lng) : null,
+        score
+      };
+    });
 
-  scored.sort((a: (typeof scored)[number], b: (typeof scored)[number]) => b.score - a.score);
+    scored.sort((a: (typeof scored)[number], b: (typeof scored)[number]) => b.score - a.score);
 
-  return NextResponse.json({ events: scored });
+    return NextResponse.json({ events: scored });
+  } catch (error) {
+    console.error("Failed to load events", error);
+    return NextResponse.json({ events: [] });
+  }
 }
 
 type CreateEventBody = {
@@ -119,6 +124,7 @@ type CreateEventBody = {
   category: string;
   eventDate: string;
   startTime: string;
+  endDate?: string;
   endTime?: string;
   venueName: string;
   address: string;
@@ -158,8 +164,9 @@ export async function POST(request: NextRequest) {
 
   const eventDate = new Date(`${body.eventDate}T00:00:00`);
   const startTime = new Date(`${body.eventDate}T${body.startTime}:00`);
+  const endDate = body.endDate || body.eventDate;
   const endTime = body.endTime
-    ? new Date(`${body.eventDate}T${body.endTime}:00`)
+    ? new Date(`${endDate}T${body.endTime}:00`)
     : null;
 
   const event = await prisma.event.create({

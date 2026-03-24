@@ -33,6 +33,7 @@ export async function GET(
     category: event.category,
     eventDate: formatDate(event.eventDate),
     startTime: formatTime(event.startTime),
+    endDate: event.endTime ? formatDate(event.endTime) : formatDate(event.eventDate),
     endTime: event.endTime ? formatTime(event.endTime) : "",
     venueName: event.venueName,
     address: event.address,

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const data = requests.map((request) => ({
     id: request.id,
     userId: request.user1Id,
-    name: request.user1.displayName ?? request.user1.email ?? "User",
+    name: request.user1.displayName ?? request.user1.email ?? request.user1.phone ?? "Member",
     photo: request.user1.profilePhotoUrl,
     sharedEventId: request.sharedEventId,
     sharedEventTitle: request.sharedEvent?.title ?? "Shared event",

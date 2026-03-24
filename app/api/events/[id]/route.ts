@@ -62,6 +62,9 @@ export async function GET(
     category: event.category,
     date: format(event.eventDate, "MMM d, yyyy"),
     time: `${format(event.startTime, "hh:mm a")} ${event.endTime ? `- ${format(event.endTime, "hh:mm a")}` : ""}`.trim(),
+    startTime: event.startTime.toISOString(),
+    endTime: event.endTime ? event.endTime.toISOString() : null,
+    eventDate: event.eventDate.toISOString(),
     venueName: event.venueName,
     address: event.address,
     lat: event.lat ? Number(event.lat) : null,
@@ -102,6 +105,7 @@ type UpdateEventBody = {
   category: string;
   eventDate: string;
   startTime: string;
+  endDate?: string;
   endTime?: string;
   venueName: string;
   address: string;
@@ -148,8 +152,9 @@ export async function PUT(
 
   const eventDate = new Date(`${body.eventDate}T00:00:00`);
   const startTime = new Date(`${body.eventDate}T${body.startTime}:00`);
+  const endDate = body.endDate || body.eventDate;
   const endTime = body.endTime
-    ? new Date(`${body.eventDate}T${body.endTime}:00`)
+    ? new Date(`${endDate}T${body.endTime}:00`)
     : null;
 
   const updated = await prisma.event.update({

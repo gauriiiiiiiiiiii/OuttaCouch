@@ -45,6 +45,27 @@ export default function ProfilePage() {
         }
         const json = (await res.json()) as ProfileResponse;
         if (active) {
+          const pendingRaw = localStorage.getItem("calendarPendingEvent");
+          if (pendingRaw) {
+            try {
+              const pending = JSON.parse(pendingRaw) as {
+                id: string;
+                title: string;
+                date: string;
+                category: string;
+                status: string;
+                imageUrl?: string | null;
+              };
+              const exists = json.attendedEvents.some((event) => event.id === pending.id);
+              if (!exists) {
+                json.attendedEvents = [pending, ...json.attendedEvents];
+              } else {
+                localStorage.removeItem("calendarPendingEvent");
+              }
+            } catch (err) {
+              // ignore parse errors
+            }
+          }
           setData(json);
         }
       } catch (err) {

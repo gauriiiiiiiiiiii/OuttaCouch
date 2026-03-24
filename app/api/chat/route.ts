@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       const score = recencyScore(lastMessage?.sentAt ?? null);
       return {
         connectionId: connection.id,
-        name: other.displayName ?? other.email ?? "User",
+        name: other.displayName ?? other.email ?? other.phone ?? "Member",
         photo: other.profilePhotoUrl,
         lastMessage: lastMessage?.content ?? "",
         lastAt: lastMessage?.sentAt ?? null,

@@ -19,6 +19,11 @@ export async function GET(request: NextRequest) {
   });
 
   const eventIds = myAttendances.map((item) => item.eventId);
+  const hasFallbackSignals = Boolean(me?.city) || (me?.preferences?.length ?? 0) > 0;
+
+  if (eventIds.length === 0 && !hasFallbackSignals) {
+    return NextResponse.json({ suggestions: [] });
+  }
 
   const existingConnections = await prisma.connection.findMany({
     where: {
@@ -144,7 +149,7 @@ export async function GET(request: NextRequest) {
       prefScore * 0.15;
     acc[item.userId] = {
       userId: item.userId,
-      name: item.user.displayName ?? item.user.email ?? "User",
+      name: item.user.displayName ?? item.user.email ?? "Member",
       photo: item.user.profilePhotoUrl,
       sharedEventTitle: item.event.title,
       sharedEventId: item.event.id,
@@ -157,7 +162,7 @@ export async function GET(request: NextRequest) {
 
   const TARGET_SUGGESTIONS = 10;
 
-  if (Object.keys(suggestionsMap).length < TARGET_SUGGESTIONS) {
+  if (Object.keys(suggestionsMap).length < TARGET_SUGGESTIONS && hasFallbackSignals) {
     const baseWhere: Record<string, unknown> = {
       id: { notIn: [token.sub, ...Array.from(blockedUserIds)] },
       isDeactivated: false
@@ -200,7 +205,7 @@ export async function GET(request: NextRequest) {
       const score = prefScore * 0.55 + distance * 0.25 + cityBoost;
       suggestionsMap[user.id] = {
         userId: user.id,
-        name: user.displayName ?? user.email ?? "User",
+        name: user.displayName ?? user.email ?? "Member",
         photo: user.profilePhotoUrl,
         sharedEventTitle: null,
         sharedEventId: null,

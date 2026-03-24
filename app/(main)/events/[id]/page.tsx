@@ -17,6 +17,9 @@ type EventDetail = {
   category: string;
   date: string;
   time: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  eventDate?: string | null;
   venueName: string;
   address: string;
   lat?: number | null;
@@ -37,6 +40,7 @@ export default function EventDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [commitStatus, setCommitStatus] = useState<string | null>(null);
   const [similarEvents, setSimilarEvents] = useState<EventSummary[]>([]);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -99,6 +103,53 @@ export default function EventDetailPage() {
     };
   }, [event?.category, event?.id]);
 
+  useEffect(() => {
+    if (!event || event.lat === null || event.lng === null) {
+      setDistanceKm(null);
+      return;
+    }
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const calcDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+      const r = 6371;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) *
+          Math.cos(toRad(lat2)) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return r * c;
+    };
+
+    const setFromCoords = (lat: number, lng: number) => {
+      const km = calcDistance(lat, lng, Number(event.lat), Number(event.lng));
+      setDistanceKm(Number(km.toFixed(1)));
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setFromCoords(pos.coords.latitude, pos.coords.longitude);
+        },
+        async () => {
+          const res = await fetch("/api/users/me");
+          const data = res.ok
+            ? ((await res.json()) as { user?: { lat?: number | null; lng?: number | null } })
+            : null;
+          if (data?.user?.lat && data?.user?.lng) {
+            setFromCoords(Number(data.user.lat), Number(data.user.lng));
+          }
+        },
+        { enableHighAccuracy: false, timeout: 4000 }
+      );
+    }
+  }, [event]);
+
+  const startDateTime = event?.startTime ? new Date(event.startTime) : null;
+  const endDateTime = event?.endTime ? new Date(event.endTime) : null;
+
   const mapEvents = useMemo(() => {
     if (!event) {
       return [];
@@ -120,6 +171,17 @@ export default function EventDetailPage() {
     if (res.ok) {
       const data = (await res.json()) as { status?: string; error?: string };
       setCommitStatus(data.status ?? "committed");
+      if (data.status === "committed" && event?.eventDate) {
+        const pending = {
+          id: event.id,
+          title: event.title,
+          date: event.eventDate,
+          category: event.category,
+          status: "committed",
+          imageUrl: event.coverImageUrl
+        };
+        localStorage.setItem("calendarPendingEvent", JSON.stringify(pending));
+      }
     } else {
       setCommitStatus("failed");
     }
@@ -155,8 +217,31 @@ export default function EventDetailPage() {
                   {event.date} · {event.time}
                 </p>
                 <p className="text-sm text-neutral-600">
-                  {event.venueName} · {event.address}
+                  {event.address}
                 </p>
+                <div className="mt-3 grid gap-2 text-sm text-neutral-600 sm:grid-cols-2">
+                  <div>
+                    <span className="font-semibold text-ink">Start</span>
+                    <div>
+                      {startDateTime
+                        ? startDateTime.toLocaleString()
+                        : `${event.date} ${event.time}`}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-ink">End</span>
+                    <div>
+                      {endDateTime
+                        ? endDateTime.toLocaleString()
+                        : "TBD"}
+                    </div>
+                  </div>
+                </div>
+                {distanceKm !== null ? (
+                  <p className="mt-2 text-sm text-neutral-600">
+                    {distanceKm} km away from your location
+                  </p>
+                ) : null}
                 <p className="mt-4 text-sm text-neutral-700">
                   {event.description}
                 </p>
@@ -256,7 +341,7 @@ export default function EventDetailPage() {
                 </h3>
                 <ul className="mt-3 space-y-2 text-sm text-neutral-600">
                   <li>Doors: {event.time}</li>
-                  <li>Location: {event.venueName}</li>
+                  <li>Venue: {event.venueName}</li>
                   <li>Address: {event.address}</li>
                 </ul>
               </div>

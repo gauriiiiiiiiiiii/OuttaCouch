@@ -1,21 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
 import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
 import SwipeStack from "@/components/events/SwipeStack";
 import type { EventSummary } from "@/types";
 
-const EventMap = dynamic(() => import("@/components/events/EventMap"), {
-  ssr: false
-});
-
 export default function ExplorePage() {
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"swipe" | "map">("swipe");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -81,8 +76,20 @@ export default function ExplorePage() {
     }
   ];
 
-  const swipeEvents = events.length > 0 ? events : dummyEvents;
-  const mapEvents = useMemo(() => (events.length > 0 ? events : dummyEvents), [events]);
+  const baseEvents = events.length > 0 ? events : dummyEvents;
+  const filteredEvents = useMemo(() => {
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) {
+      return baseEvents;
+    }
+    return baseEvents.filter((event) =>
+      [event.title, event.category, event.location]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(trimmed)
+    );
+  }, [baseEvents, query]);
 
   const handleSwipe = async (
     event: EventSummary,
@@ -105,7 +112,7 @@ export default function ExplorePage() {
     >
       <SectionCard
         title="Explore"
-        description="Swipe to decide or browse on the map."
+        description="Swipe to decide."
       >
         {loading ? (
           <p className="text-sm text-neutral-600">Loading events...</p>
@@ -113,68 +120,13 @@ export default function ExplorePage() {
           <p className="text-sm text-red-600">{error}</p>
         ) : (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setView("swipe")}
-                className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                  view === "swipe"
-                    ? "bg-ink text-parchment"
-                    : "border border-neutral-300 text-neutral-700"
-                }`}
-              >
-                Swipe
-              </button>
-              <button
-                type="button"
-                onClick={() => setView("map")}
-                className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                  view === "map"
-                    ? "bg-ink text-parchment"
-                    : "border border-neutral-300 text-neutral-700"
-                }`}
-              >
-                Map view
-              </button>
-            </div>
-            {view === "swipe" ? (
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-neutral-200 bg-white/95 p-4 text-sm text-neutral-600">
-                  Your deck is tuned to your interests, location, and recent activity.
-                </div>
-                <SwipeStack events={swipeEvents} onSwipe={handleSwipe} />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <EventMap
-                  events={mapEvents.map((event) => ({
-                    id: event.id,
-                    title: event.title,
-                    location: event.location,
-                    lat: event.lat,
-                    lng: event.lng
-                  }))}
-                />
-                <div className="grid gap-3 md:grid-cols-2">
-                  {mapEvents.slice(0, 4).map((event) => (
-                    <div
-                      key={event.id}
-                      className="rounded-2xl border border-neutral-200 bg-white/95 p-4"
-                    >
-                      <div className="text-xs uppercase tracking-[0.2em] text-ocean">
-                        {event.category}
-                      </div>
-                      <h3 className="mt-2 text-base font-semibold text-ink">
-                        {event.title}
-                      </h3>
-                      <p className="text-sm text-neutral-600">
-                        {event.date} · {event.location}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="w-full rounded-full border border-neutral-200 px-4 py-2 text-sm"
+              placeholder="Search events by name, category, or location"
+            />
+            <SwipeStack events={filteredEvents} onSwipe={handleSwipe} />
           </div>
         )}
       </SectionCard>

@@ -82,6 +82,10 @@ export async function GET(request: NextRequest) {
     orFilters.push({ city: me.city });
   }
 
+  if (orFilters.length === 0) {
+    return NextResponse.json({ results: [] });
+  }
+
   const users = await prisma.user.findMany({
     where: orFilters.length > 0 ? { ...baseWhere, OR: orFilters } : baseWhere,
     select: {
@@ -119,7 +123,7 @@ export async function GET(request: NextRequest) {
             : "Suggested for you";
       return {
         userId: user.id,
-        name: user.displayName ?? user.email ?? "User",
+        name: user.displayName ?? user.email ?? "Member",
         photo: user.profilePhotoUrl,
         city: user.city,
         matchReason,

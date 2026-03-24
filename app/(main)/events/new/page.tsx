@@ -33,6 +33,7 @@ type CreateEventForm = {
   category: string;
   eventDate: string;
   startTime: string;
+  endDate?: string;
   endTime?: string;
   venueName: string;
   address: string;
@@ -68,6 +69,8 @@ export default function CreateEventPage() {
   const category = watch("category");
   const eventDate = watch("eventDate");
   const startTime = watch("startTime");
+  const endDate = watch("endDate");
+  const endTime = watch("endTime");
   const venueName = watch("venueName");
   const maxAttendees = watch("maxAttendees");
 
@@ -81,7 +84,7 @@ export default function CreateEventPage() {
       {
         title: "Schedule",
         description: "Lock in date and timing.",
-        fields: ["eventDate", "startTime", "endTime"] as const
+        fields: ["eventDate", "startTime", "endDate", "endTime"] as const
       },
       {
         title: "Venue",
@@ -188,7 +191,7 @@ export default function CreateEventPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                  Event name
+                  Event name *
                 </label>
                 <input
                   className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
@@ -198,7 +201,7 @@ export default function CreateEventPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                  Category
+                  Category *
                 </label>
                 <select
                   className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
@@ -216,18 +219,18 @@ export default function CreateEventPage() {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                  Short description
+                  Short description *
                 </label>
                 <textarea
                   className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
                   placeholder="Short description"
                   rows={4}
-                  {...register("descriptionShort")}
+                  {...register("descriptionShort", { required: true })}
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                  Full story
+                  Full story (optional)
                 </label>
                 <textarea
                   className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
@@ -242,10 +245,10 @@ export default function CreateEventPage() {
 
         {step === 1 ? (
           <SectionCard title="Schedule" description="Lock in date and timing.">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                  Date
+                  Start date
                 </label>
                 <input
                   className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
@@ -261,6 +264,16 @@ export default function CreateEventPage() {
                   className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
                   type="time"
                   {...register("startTime", { required: true })}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                  End date
+                </label>
+                <input
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+                  type="date"
+                  {...register("endDate")}
                 />
               </div>
               <div className="space-y-2">
@@ -387,6 +400,7 @@ export default function CreateEventPage() {
                   <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Date</p>
                   <p className="font-semibold text-ink">
                     {eventDate ? `${eventDate} ${startTime || ""}`.trim() : "Not set"}
+                    {endDate ? ` → ${endDate} ${endTime || ""}`.trim() : ""}
                   </p>
                 </div>
                 <div>
