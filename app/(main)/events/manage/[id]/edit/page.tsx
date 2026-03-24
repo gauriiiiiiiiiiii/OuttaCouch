@@ -93,6 +93,7 @@ export default function EditEventPage() {
   const eventDate = watch("eventDate");
   const startTime = watch("startTime");
   const endDate = watch("endDate");
+  const endTime = watch("endTime");
   const venueName = watch("venueName");
   const maxAttendees = watch("maxAttendees");
 
