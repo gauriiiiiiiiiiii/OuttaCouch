@@ -166,12 +166,18 @@ export default function EventDetailPage() {
   }, [event]);
 
   const handleCommit = async () => {
-    setCommitStatus(null);
-    const res = await fetch(`/api/events/${id}/commit`, { method: "POST" });
-    if (res.ok) {
+    // Prevent duplicate submissions
+    if (commitStatus === "committed" || commitStatus === "Already added") {
+      return;
+    }
+    
+    setCommitStatus("submitting");
+    try {
+      const res = await fetch(`/api/events/${id}/commit`, { method: "POST" });
       const data = (await res.json()) as { status?: string; error?: string };
-      setCommitStatus(data.status ?? "committed");
+      
       if (data.status === "committed" && event?.eventDate) {
+        // Event successfully committed - store to calendar
         const pending = {
           id: event.id,
           title: event.title,
@@ -181,8 +187,13 @@ export default function EventDetailPage() {
           imageUrl: event.coverImageUrl
         };
         localStorage.setItem("calendarPendingEvent", JSON.stringify(pending));
+        setCommitStatus("committed");
+      } else if (data.status === "already-committed") {
+        setCommitStatus("Already added");
+      } else {
+        setCommitStatus("failed");
       }
-    } else {
+    } catch (err) {
       setCommitStatus("failed");
     }
   };
@@ -316,9 +327,10 @@ export default function EventDetailPage() {
                     <button
                       type="button"
                       onClick={handleCommit}
-                      className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment"
+                      disabled={commitStatus === "committed" || commitStatus === "submitting"}
+                      className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Attend event
+                      {commitStatus === "submitting" ? "Adding..." : commitStatus === "committed" ? "✓ Added" : "Attend event"}
                     </button>
                   ) : (
                     <a

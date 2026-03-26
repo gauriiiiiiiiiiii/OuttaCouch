@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
 import SwipeStack from "@/components/events/SwipeStack";
 import type { EventSummary } from "@/types";
 
 export default function ExplorePage() {
+  const router = useRouter();
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [hiddenEvents, setHiddenEvents] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -79,17 +82,24 @@ export default function ExplorePage() {
   const baseEvents = events.length > 0 ? events : dummyEvents;
   const filteredEvents = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
-    if (!trimmed) {
-      return baseEvents;
+    let filtered = baseEvents;
+    
+    // Filter out hidden events
+    filtered = filtered.filter((event) => !hiddenEvents.has(event.id));
+    
+    // Apply search query
+    if (trimmed) {
+      filtered = filtered.filter((event) =>
+        [event.title, event.category, event.location]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(trimmed)
+      );
     }
-    return baseEvents.filter((event) =>
-      [event.title, event.category, event.location]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(trimmed)
-    );
-  }, [baseEvents, query]);
+    
+    return filtered;
+  }, [baseEvents, query, hiddenEvents]);
 
   const handleSwipe = async (
     event: EventSummary,
@@ -98,11 +108,23 @@ export default function ExplorePage() {
     if (event.id.startsWith("dummy")) {
       return;
     }
+
+    // Log swipe action to database
     await fetch("/api/events/swipe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event_id: event.id, action })
     });
+
+    // Handle swipe actions
+    if (action === "right") {
+      // Swipe right: Open event details for confirmation
+      router.push(`/events/${event.id}`);
+    } else if (action === "left") {
+      // Swipe left: Skip/hide event from feed
+      setHiddenEvents((prev) => new Set([...prev, event.id]));
+    }
+    // up (maybe) and down (share) are just logged, no additional action
   };
 
   return (

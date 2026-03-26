@@ -134,7 +134,12 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
   const eventsByDay = events.reduce<Record<string, CalendarEvent[]>>(
     (acc, event) => {
       const key = format(new Date(event.date), "yyyy-MM-dd");
-      acc[key] = acc[key] ? [...acc[key], event] : [event];
+      // Check if event already exists for this day (prevent duplicates)
+      const dayEvents = acc[key] ?? [];
+      const isDuplicate = dayEvents.some((e) => e.id === event.id);
+      if (!isDuplicate) {
+        acc[key] = [...dayEvents, event];
+      }
       return acc;
     },
     {}
