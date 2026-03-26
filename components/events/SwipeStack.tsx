@@ -7,15 +7,13 @@ import type { EventSummary } from "@/types";
 
 type SwipeStackProps = {
   events: EventSummary[];
-  onSwipe: (event: EventSummary, action: "left" | "right" | "up" | "down") => void;
+  onSwipe: (event: EventSummary, action: "left" | "right") => void;
 };
 
 export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
   const router = useRouter();
   const [index, setIndex] = useState(0);
-  const [swipeAction, setSwipeAction] = useState<
-    "left" | "right" | "up" | "down" | null
-  >(null);
+  const [swipeAction, setSwipeAction] = useState<"left" | "right" | null>(null);
   const current = events[index];
   const next = events[index + 1];
   const threshold = 120;
@@ -24,10 +22,8 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
   const rotate = useTransform(x, [-200, 0, 200], [-12, 0, 12]);
   const likeOpacity = useTransform(x, [40, 120], [0, 1]);
   const nopeOpacity = useTransform(x, [-120, -40], [1, 0]);
-  const maybeOpacity = useTransform(y, [40, 120], [0, 1]);
-  const shareOpacity = useTransform(y, [-120, -40], [1, 0]);
 
-  const handleSwipe = (action: "left" | "right" | "up" | "down") => {
+  const handleSwipe = (action: "left" | "right") => {
     if (!current) {
       return;
     }
@@ -72,11 +68,7 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
             ? { x: 600, y: 0, rotate: 18 }
             : swipeAction === "left"
               ? { x: -600, y: 0, rotate: -18 }
-              : swipeAction === "up"
-                ? { x: 0, y: -600, rotate: 0 }
-                : swipeAction === "down"
-                  ? { x: 0, y: 600, rotate: 0 }
-                  : { x: 0, y: 0, rotate: 0 }
+              : { x: 0, y: 0, rotate: 0 }
         }
         transition={{ type: "spring", stiffness: 260, damping: 24 }}
         onDragEnd={(_, info) => {
@@ -87,14 +79,6 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
           }
           if (offset.x < -threshold) {
             handleSwipe("left");
-            return;
-          }
-          if (offset.y < -threshold) {
-            handleSwipe("up");
-            return;
-          }
-          if (offset.y > threshold) {
-            handleSwipe("down");
             return;
           }
           x.set(0);
@@ -113,25 +97,13 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
           className="absolute left-4 top-4 rounded-full border border-green-500 px-3 py-1 text-xs font-semibold text-green-600"
           style={{ opacity: likeOpacity }}
         >
-          COMMIT
+          DETAILS
         </motion.div>
         <motion.div
           className="absolute right-4 top-4 rounded-full border border-red-500 px-3 py-1 text-xs font-semibold text-red-600"
           style={{ opacity: nopeOpacity }}
         >
           SKIP
-        </motion.div>
-        <motion.div
-          className="absolute left-4 bottom-4 rounded-full border border-amber-500 px-3 py-1 text-xs font-semibold text-amber-600"
-          style={{ opacity: maybeOpacity }}
-        >
-          MAYBE
-        </motion.div>
-        <motion.div
-          className="absolute right-4 bottom-4 rounded-full border border-sky-500 px-3 py-1 text-xs font-semibold text-sky-600"
-          style={{ opacity: shareOpacity }}
-        >
-          SHARE
         </motion.div>
         <div
           className="mb-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100"
@@ -189,22 +161,10 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
           Skip
         </button>
         <button
-          className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold"
-          onClick={() => handleSwipe("down")}
-        >
-          Maybe
-        </button>
-        <button
-          className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold"
-          onClick={() => handleSwipe("up")}
-        >
-          Share
-        </button>
-        <button
           className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-parchment"
           onClick={() => handleSwipe("right")}
         >
-          Commit
+          View Details
         </button>
       </div>
     </div>

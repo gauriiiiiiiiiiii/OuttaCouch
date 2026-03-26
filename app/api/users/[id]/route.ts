@@ -29,6 +29,7 @@ export async function GET(
   const isSelf = token?.sub === user.id;
   const hasViewer = !!token?.sub && !isSelf;
   let connected = false;
+  let viewerConnection: { id: string; status: string } | null = null;
 
   if (!isSelf) {
     if (user.profileVisibility === "private") {
@@ -51,6 +52,7 @@ export async function GET(
       });
 
       connected = !!connection;
+      viewerConnection = connection ? { id: connection.id, status: connection.status } : null;
       if (!connected) {
         return NextResponse.json({ error: "Profile not available" }, { status: 403 });
       }
@@ -60,19 +62,17 @@ export async function GET(
   if (hasViewer && !connected) {
     const connection = await prisma.connection.findFirst({
       where: {
-        status: "accepted",
         OR: [
           { user1Id: token.sub as string, user2Id: user.id },
           { user1Id: user.id, user2Id: token.sub as string }
         ]
       }
     });
-    connected = !!connection;
+    connected = !!connection && connection.status === "accepted";
+    viewerConnection = connection ? { id: connection.id, status: connection.status } : null;
   }
 
-  const canSeeCalendar = isSelf || connected;
-
-  const [eventsHostedCount, connectionsCount, hostedEvents, swipedEvents] =
+  const [eventsHostedCount, connectionsCount, hostedEvents, timelineAttendees, publicAttendees] =
     await Promise.all([
       prisma.event.count({ where: { hostId: user.id } }),
       prisma.connection.count({
@@ -95,28 +95,83 @@ export async function GET(
           ticketPrice: true
         }
       }),
-      canSeeCalendar
-        ? prisma.eventSwipe.findMany({
-            where: {
-              userId: user.id,
-              action: "up"
-            },
-            include: { event: true }
-          })
-        : Promise.resolve([])
+      prisma.eventAttendee.findMany({
+        where: {
+          userId: user.id,
+          status: { in: ["committed", "attended"] }
+        },
+        include: {
+          event: {
+            select: {
+              id: true,
+              title: true,
+              eventDate: true,
+              category: true,
+              address: true,
+              venueName: true,
+              coverImageUrl: true,
+              visibility: true
+            }
+          }
+        },
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.eventAttendee.findMany({
+        where: {
+          userId: user.id,
+          status: { in: ["committed", "attended"] },
+          event: { visibility: "public" }
+        },
+        include: {
+          event: {
+            select: {
+              id: true,
+              title: true,
+              eventDate: true,
+              category: true,
+              address: true,
+              venueName: true,
+              coverImageUrl: true
+            }
+          }
+        }
+      })
     ]);
 
-  const publicCalendar = swipedEvents.map((item) => ({
+  const timelineEvents = timelineAttendees.map((item) => ({
     id: item.event.id,
     title: item.event.title,
     date: item.event.eventDate.toISOString(),
     category: item.event.category,
-    status: item.action,
+    venueName: item.event.venueName,
+    location: item.event.address,
+    status: item.status,
     imageUrl: item.event.coverImageUrl
   }));
 
+  const publicCalendar = publicAttendees.map((item) => ({
+    id: item.event.id,
+    title: item.event.title,
+    date: item.event.eventDate.toISOString(),
+    category: item.event.category,
+    location: item.event.venueName ?? item.event.address,
+    status: item.status,
+    imageUrl: item.event.coverImageUrl
+  }));
+
+  const uniqueTimeline = Array.from(
+    new Map(timelineEvents.map((event) => [event.id, event])).values()
+  );
+
+  const uniquePublicCalendar = Array.from(
+    new Map(publicCalendar.map((event) => [event.id, event])).values()
+  );
+
   return NextResponse.json({
     user,
+    isSelf,
+    connectionStatus: viewerConnection?.status ?? (connected ? "accepted" : "none"),
+    connectionId: viewerConnection?.id ?? null,
     stats: {
       eventsHosted: eventsHostedCount,
       connections: connectionsCount
@@ -130,6 +185,7 @@ export async function GET(
       isFree: event.isFree,
       ticketPrice: event.ticketPrice?.toString() ?? null
     })),
-    publicCalendar: canSeeCalendar ? publicCalendar : []
+    timelineEvents: uniqueTimeline,
+    publicCalendar: uniquePublicCalendar
   });
 }

@@ -65,6 +65,8 @@ model User {
   lat                Decimal?
   lng                Decimal?
   preferences        String[]    @default([])
+  remindersEnabled   Boolean     @default(true) @map("reminders_enabled")
+  recommendationsEnabled Boolean @default(true) @map("recommendations_enabled")
   calendarVisibility Visibility  @default(connections) @map("calendar_visibility")
   profileVisibility  Visibility  @default(public) @map("profile_visibility")
   profileComplete    Boolean     @default(false) @map("profile_complete")
@@ -84,8 +86,14 @@ model User {
   messages           Message[]
   otpTokens          OtpToken[]
   notifications      Notification[]
+  notificationSchedules NotificationSchedule[]
   memories           Memory[]
   eventSwipes        EventSwipe[]
+  contactImports     ContactImport[]
+  contactRegistrations ContactImport[] @relation("ContactRegistrations")
+  invitationsSent    ContactInvitation[]
+  invitationsReceived ContactInvitation[] @relation("InvitationRegistrations")
+  referralLinks      ReferralLink[]
 
   @@map("users")
 }
@@ -102,6 +110,25 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id])
 
   @@map("notifications")
+}
+
+model NotificationSchedule {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  eventId   String?  @map("event_id")
+  type      String
+  title     String
+  body      String
+  link      String?
+  sendAt    DateTime @map("send_at")
+  sentAt    DateTime? @map("sent_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id])
+  event     Event?   @relation(fields: [eventId], references: [id])
+
+  @@unique([userId, eventId, type, sendAt])
+  @@map("notification_schedules")
 }
 
 model OtpToken {
@@ -151,6 +178,7 @@ model Event {
   host             User         @relation("HostedEvents", fields: [hostId], references: [id])
   images           EventImage[]
   attendees        EventAttendee[]
+  notificationSchedules NotificationSchedule[]
   tickets          Ticket[]
   sharedConnections Connection[]
   memories        Memory[]
@@ -184,6 +212,7 @@ model EventAttendee {
   user       User           @relation(fields: [userId], references: [id])
   ticket     Ticket?        @relation(fields: [ticketId], references: [id])
 
+  @@unique([eventId, userId])
   @@map("event_attendees")
 }
 
@@ -266,4 +295,65 @@ model EventSwipe {
   event     Event    @relation(fields: [eventId], references: [id])
 
   @@map("event_swipes")
+}
+
+model ContactImport {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  phone         String    // Normalized phone number
+  name          String?
+  status        String    @default("pending") // pending | invited | registered | failed
+  referralCode  String?   @map("referral_code") // Unique code for this contact
+  invitedAt     DateTime? @map("invited_at")
+  registeredAt  DateTime? @map("registered_at")
+  registeredUserId String? @map("registered_user_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registeredUser User?    @relation("ContactRegistrations", fields: [registeredUserId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, phone])
+  @@index([userId])
+  @@index([phone])
+  @@map("contact_imports")
+}
+
+model ContactInvitation {
+  id               String    @id @default(uuid())
+  fromUserId       String    @map("from_user_id")
+  toPhone          String    @map("to_phone") // Normalized phone number
+  channel          String    // "sms" | "whatsapp"
+  status           String    @default("pending") // pending | sent | clicked | registered
+  referralCode     String    @unique @map("referral_code") // Unique join link code
+  sentAt           DateTime? @map("sent_at")
+  clickedAt        DateTime? @map("clicked_at")
+  registeredUserId String?   @map("registered_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  fromUser         User      @relation(fields: [fromUserId], references: [id], onDelete: Cascade)
+  registeredUser   User?     @relation("InvitationRegistrations", fields: [registeredUserId], references: [id], onDelete: SetNull)
+
+  @@index([fromUserId])
+  @@index([toPhone])
+  @@index([referralCode])
+  @@map("contact_invitations")
+}
+
+model ReferralLink {
+  id           String    @id @default(uuid())
+  code         String    @unique // Alphanumeric code for URL
+  fromUserId   String    @map("from_user_id")
+  type         String    // "contact" | "general"
+  clicks       Int       @default(0)
+  registrations Int      @default(0)
+  expiresAt    DateTime? @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  fromUser     User      @relation(fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  @@index([code])
+  @@index([fromUserId])
+  @@map("referral_links")
 }

@@ -46,5 +46,52 @@ export async function POST(
     })
   ]);
 
+  const user = await prisma.user.findUnique({
+    where: { id: token.sub },
+    select: { remindersEnabled: true }
+  });
+
+  if (user?.remindersEnabled) {
+    const startAt = event.startTime ?? event.eventDate;
+    const now = Date.now();
+    const reminderOffsets = [
+      { label: "1 day", ms: 24 * 60 * 60 * 1000 },
+      { label: "1 hour", ms: 60 * 60 * 1000 },
+      { label: "10 minutes", ms: 10 * 60 * 1000 }
+    ];
+
+    const startLabel = event.startTime
+      ? event.startTime.toLocaleString("en-US", {
+          dateStyle: "medium",
+          timeStyle: "short"
+        })
+      : event.eventDate.toLocaleDateString("en-US");
+    const locationLabel = event.venueName ?? event.address ?? "the venue";
+
+    const schedules = reminderOffsets
+      .map((offset) => ({
+        type: "event_reminder",
+        sendAt: new Date(startAt.getTime() - offset.ms),
+        label: offset.label
+      }))
+      .filter((item) => item.sendAt.getTime() > now)
+      .map((item) => ({
+        userId: token.sub,
+        eventId: event.id,
+        type: item.type,
+        title: "Upcoming Event Reminder",
+        body: `Your event "${event.title}" starts in ${item.label} at ${locationLabel} (${startLabel}).`,
+        link: `/events/${event.id}`,
+        sendAt: item.sendAt
+      }));
+
+    if (schedules.length > 0) {
+      await prisma.notificationSchedule.createMany({
+        data: schedules,
+        skipDuplicates: true
+      });
+    }
+  }
+
   return NextResponse.json({ status: "committed" });
 }

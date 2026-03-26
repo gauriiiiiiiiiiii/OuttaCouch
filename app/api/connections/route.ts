@@ -16,15 +16,21 @@ export async function GET(request: NextRequest) {
     include: { user1: true, user2: true }
   });
 
-  const data = connections.map((connection) => {
-    const other = connection.user1Id === token.sub ? connection.user2 : connection.user1;
-    return {
-      id: connection.id,
-      userId: other.id,
-      name: other.displayName ?? other.email ?? other.phone ?? "Member",
-      photo: other.profilePhotoUrl
-    };
-  });
+  const data = connections
+    .map((connection) => {
+      const other = connection.user1Id === token.sub ? connection.user2 : connection.user1;
+      const name = other.displayName ?? other.email ?? other.phone ?? null;
+      if (!name) {
+        return null;
+      }
+      return {
+        id: connection.id,
+        userId: other.id,
+        name,
+        photo: other.profilePhotoUrl
+      };
+    })
+    .filter((connection): connection is NonNullable<typeof connection> => Boolean(connection));
 
   return NextResponse.json({ connections: data });
 }

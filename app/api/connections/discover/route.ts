@@ -105,6 +105,10 @@ export async function GET(request: NextRequest) {
 
   const results = users
     .map((user) => {
+      const name = user.displayName ?? user.email ?? null;
+      if (!name) {
+        return null;
+      }
       const prefOverlap = (user.preferences ?? []).filter((pref) => myPrefs.has(pref));
       const prefScore = myPrefs.size > 0 ? prefOverlap.length / Math.max(1, myPrefs.size) : 0;
       const distance = distanceScore(
@@ -123,13 +127,14 @@ export async function GET(request: NextRequest) {
             : "Suggested for you";
       return {
         userId: user.id,
-        name: user.displayName ?? user.email ?? "Member",
+        name,
         photo: user.profilePhotoUrl,
         city: user.city,
         matchReason,
         score
       };
     })
+    .filter((result): result is NonNullable<typeof result> => Boolean(result))
     .sort((a, b) => b.score - a.score)
     .map(({ score, ...rest }) => rest);
 

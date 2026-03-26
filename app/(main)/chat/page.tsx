@@ -1,31 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
+import { navigateToProfile } from "@/lib/navigateToProfile";
 
 type ChatItem = {
   connectionId: string;
+  userId: string;
   name: string;
   lastMessage: string;
   photo?: string | null;
   lastAt?: string | null;
 };
 
+type ConnectionItem = {
+  id: string;
+  userId: string;
+  name: string;
+  photo?: string | null;
+};
+
 export default function ChatListPage() {
+  const router = useRouter();
   const [chats, setChats] = useState<ChatItem[]>([]);
+  const [connections, setConnections] = useState<ConnectionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const res = await fetch("/api/chat");
-      const data = res.ok
-        ? ((await res.json()) as { chats: ChatItem[] })
+      const [chatsRes, connectionsRes] = await Promise.all([
+        fetch("/api/chat"),
+        fetch("/api/connections")
+      ]);
+      const chatData = chatsRes.ok
+        ? ((await chatsRes.json()) as { chats: ChatItem[] })
         : { chats: [] };
+      const connectionsData = connectionsRes.ok
+        ? ((await connectionsRes.json()) as { connections: ConnectionItem[] })
+        : { connections: [] };
       if (active) {
-        setChats(data.chats ?? []);
+        setChats(chatData.chats ?? []);
+        setConnections(connectionsData.connections ?? []);
         setLoading(false);
       }
     };
@@ -35,10 +54,63 @@ export default function ChatListPage() {
     };
   }, []);
 
+  const chatMap = useMemo(() => {
+    return new Map(chats.map((chat) => [chat.connectionId, chat]));
+  }, [chats]);
+
+  const handleConnectionClick = (connectionId: string) => {
+    router.push(`/chat/${connectionId}`);
+  };
+
 
   return (
     <PageShell title="Chat" subtitle="Conversations with connections.">
       <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold">Connections</h2>
+          <p className="text-sm text-neutral-500">Start a new conversation.</p>
+          {connections.length === 0 ? (
+            <p className="mt-3 text-sm text-neutral-600">No connections yet.</p>
+          ) : (
+            <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
+              {connections.map((connection) => {
+                const hasChat = chatMap.has(connection.id);
+                return (
+                  <button
+                    key={connection.id}
+                    type="button"
+                    onClick={() => handleConnectionClick(connection.id)}
+                    className="flex w-28 flex-shrink-0 flex-col items-center gap-2 rounded-2xl border border-neutral-200 bg-white/95 px-3 py-3 text-center transition hover:border-neutral-300 hover:shadow-sm"
+                  >
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        navigateToProfile(router, connection.userId);
+                      }}
+                      className="h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
+                      aria-label={`View ${connection.name}`}
+                    >
+                      {connection.photo ? (
+                        <img
+                          src={connection.photo}
+                          alt={connection.name}
+                          className="h-full w-full rounded-full object-cover"
+                        />
+                      ) : null}
+                    </button>
+                    <div className="text-xs font-semibold text-neutral-800">
+                      {connection.name}
+                    </div>
+                    <div className="text-[11px] text-neutral-500">
+                      {hasChat ? "Open chat" : "Start a conversation"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-lg font-semibold">Messages</h2>
@@ -69,7 +141,16 @@ export default function ChatListPage() {
                 href={`/chat/${chat.connectionId}`}
                 className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white/95 px-4 py-3 shadow-sm transition hover:-translate-y-0.5 hover:border-neutral-300"
               >
-                <div className="h-12 w-12 rounded-full bg-neutral-200">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    navigateToProfile(router, chat.userId);
+                  }}
+                  className="h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
+                  aria-label={`View ${chat.name}`}
+                >
                   {chat.photo ? (
                     <img
                       src={chat.photo}
@@ -77,7 +158,7 @@ export default function ChatListPage() {
                       className="h-full w-full rounded-full object-cover"
                     />
                   ) : null}
-                </div>
+                </button>
                 <div className="flex-1">
                   <div className="font-semibold">{chat.name}</div>
                   <div className="text-xs text-neutral-500">

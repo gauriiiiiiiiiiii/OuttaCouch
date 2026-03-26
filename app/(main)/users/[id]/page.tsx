@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
+import CalendarGrid from "@/components/profile/CalendarGrid";
+import { navigateToProfile } from "@/lib/navigateToProfile";
 
 type HostedEvent = {
   id: string;
@@ -25,26 +27,46 @@ type PublicProfile = {
     profileVisibility: "private" | "connections" | "public";
     isVerifiedHost: boolean;
   };
+  isSelf?: boolean;
+  connectionStatus: "accepted" | "pending" | "none";
+  connectionId: string | null;
   stats: {
     eventsHosted: number;
     connections: number;
   };
   hostedEvents: HostedEvent[];
+  timelineEvents?: {
+    id: string;
+    title: string;
+    date: string;
+    category: string;
+    venueName?: string | null;
+    location?: string | null;
+    status: string;
+    imageUrl?: string | null;
+  }[];
   publicCalendar?: {
     id: string;
     title: string;
     date: string;
     category: string;
     status: string;
+    location?: string | null;
   }[];
 };
 
 export default function PublicProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const id = params?.id as string;
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    "accepted" | "pending" | "none"
+  >("none");
+  const [connectionId, setConnectionId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -58,6 +80,8 @@ export default function PublicProfilePage() {
         const data = (await res.json()) as PublicProfile;
         if (active) {
           setProfile(data);
+          setConnectionStatus(data.connectionStatus ?? "none");
+          setConnectionId(data.connectionId ?? null);
         }
       } catch (err) {
         if (active) {
@@ -79,6 +103,37 @@ export default function PublicProfilePage() {
     };
   }, [id]);
 
+  const timelineEvents = useMemo(() => {
+    return profile?.timelineEvents ?? [];
+  }, [profile?.timelineEvents]);
+
+  const handleConnect = async () => {
+    if (!profile || connecting || connectionStatus !== "none") {
+      return;
+    }
+    setConnecting(true);
+    try {
+      const res = await fetch(`/api/connections/request/${profile.user.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      const data = (await res.json()) as { status?: string; id?: string };
+      if (res.ok && data.status) {
+        setConnectionStatus(data.status as "pending" | "accepted");
+        setConnectionId(data.id ?? null);
+      }
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleMessage = () => {
+    if (connectionId) {
+      router.push(`/chat/${connectionId}`);
+    }
+  };
+
   return (
     <PageShell title="User profile" subtitle="See shared event identity.">
       {loading ? (
@@ -93,7 +148,12 @@ export default function PublicProfilePage() {
         <div className="space-y-6">
           <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div className="h-20 w-20 overflow-hidden rounded-full bg-neutral-200">
+              <button
+                type="button"
+                onClick={() => navigateToProfile(router, profile.user.id)}
+                className="h-20 w-20 overflow-hidden rounded-full bg-neutral-200"
+                aria-label={`View ${profile.user.displayName ?? "User"}`}
+              >
                 {profile.user.profilePhotoUrl ? (
                   <img
                     src={profile.user.profilePhotoUrl}
@@ -101,7 +161,7 @@ export default function PublicProfilePage() {
                     className="h-full w-full object-cover"
                   />
                 ) : null}
-              </div>
+              </button>
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-semibold">
@@ -122,6 +182,28 @@ export default function PublicProfilePage() {
                   </p>
                 ) : null}
               </div>
+              {!profile.isSelf ? (
+                <div className="flex items-center gap-2">
+                  {connectionStatus === "accepted" ? (
+                    <button
+                      type="button"
+                      onClick={handleMessage}
+                      className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-parchment"
+                    >
+                      Message
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleConnect}
+                      disabled={connecting || connectionStatus === "pending"}
+                      className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {connectionStatus === "pending" ? "Requested" : "Connect"}
+                    </button>
+                  )}
+                </div>
+              ) : null}
             </div>
             <div className="mt-6 flex flex-wrap gap-2">
               {profile.user.preferences.length > 0 ? (
@@ -137,6 +219,53 @@ export default function PublicProfilePage() {
                 <span className="text-xs text-neutral-500">No interests shared.</span>
               )}
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                Activity timeline
+              </h2>
+              <span className="text-xs text-neutral-400">
+                {timelineEvents.length} events
+              </span>
+            </div>
+            {timelineEvents.length === 0 ? (
+              <p className="mt-4 text-sm text-neutral-600">No recent activity.</p>
+            ) : (
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                {timelineEvents.map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => router.push(`/events/${event.id}`)}
+                    className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white/95 p-4 text-left transition hover:-translate-y-0.5 hover:border-neutral-300"
+                  >
+                    <div className="h-14 w-14 overflow-hidden rounded-xl bg-neutral-200">
+                      {event.imageUrl ? (
+                        <img
+                          src={event.imageUrl}
+                          alt={event.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-ink">{event.title}</p>
+                      <p className="text-xs text-neutral-500">
+                        {new Date(event.date).toLocaleDateString()} · {event.category}
+                      </p>
+                      {event.location ? (
+                        <p className="text-xs text-neutral-500">{event.location}</p>
+                      ) : null}
+                    </div>
+                    <span className="rounded-full border border-neutral-200 px-3 py-1 text-[11px] text-neutral-500">
+                      {event.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -203,31 +332,23 @@ export default function PublicProfilePage() {
             )}
           </div>
 
-          {profile.publicCalendar && profile.publicCalendar.length > 0 ? (
-            <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                  Public calendar
-                </h2>
-                <span className="text-xs text-neutral-400">
-                  {profile.publicCalendar.length} events
-                </span>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {profile.publicCalendar.slice(0, 6).map((event) => (
-                  <div
-                    key={event.id}
-                    className="rounded-2xl border border-neutral-200 bg-white/95 p-4"
-                  >
-                    <p className="text-sm font-semibold text-ink">{event.title}</p>
-                    <p className="text-xs text-neutral-500">
-                      {new Date(event.date).toLocaleDateString()} · {event.category}
-                    </p>
-                  </div>
-                ))}
-              </div>
+          <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                Public calendar
+              </h2>
+              <span className="text-xs text-neutral-400">
+                {profile.publicCalendar?.length ?? 0} events
+              </span>
             </div>
-          ) : null}
+            <div className="mt-4">
+              <CalendarGrid
+                events={profile.publicCalendar ?? []}
+                title="Public events"
+                onEventSelect={(event) => router.push(`/events/${event.id}`)}
+              />
+            </div>
+          </div>
         </div>
       )}
     </PageShell>

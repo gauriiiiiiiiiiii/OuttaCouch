@@ -196,5 +196,93 @@ export async function POST(request: NextRequest) {
     }
   });
 
+  const recentCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const recentAttendees = await prisma.eventAttendee.findMany({
+    where: {
+      event: {
+        category: event.category,
+        eventDate: { gte: recentCutoff }
+      }
+    },
+    select: { userId: true },
+    distinct: ["userId"]
+  });
+
+  const attendedUserIds = new Set(recentAttendees.map((item) => item.userId));
+
+  const candidates = await prisma.user.findMany({
+    where: {
+      id: { not: token.sub },
+      isDeactivated: false,
+      recommendationsEnabled: true,
+      OR: [
+        { preferences: { has: event.category } },
+        { id: { in: Array.from(attendedUserIds) } }
+      ]
+    },
+    select: {
+      id: true,
+      preferences: true,
+      lat: true,
+      lng: true
+    },
+    take: 250
+  });
+
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const isNear = (lat?: number | null, lng?: number | null) => {
+    if (lat === null || lng === null || lat === undefined || lng === undefined) {
+      return false;
+    }
+    if (!event.lat || !event.lng) {
+      return false;
+    }
+    const r = 6371;
+    const dLat = toRad(Number(event.lat) - Number(lat));
+    const dLng = toRad(Number(event.lng) - Number(lng));
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(Number(lat))) *
+        Math.cos(toRad(Number(event.lat))) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = r * c;
+    return distance <= 10;
+  };
+
+  const notifyUserIds = candidates
+    .filter((user) => {
+      const prefMatch = user.preferences.includes(event.category);
+      const attendedMatch = attendedUserIds.has(user.id);
+      const nearMatch = isNear(user.lat ? Number(user.lat) : null, user.lng ? Number(user.lng) : null);
+      return prefMatch || attendedMatch || nearMatch;
+    })
+    .map((user) => user.id);
+
+  if (notifyUserIds.length > 0) {
+    const existing = await prisma.notification.findMany({
+      where: {
+        userId: { in: notifyUserIds },
+        link: `/events/${event.id}`,
+        title: "New event you might like"
+      },
+      select: { userId: true }
+    });
+    const existingIds = new Set(existing.map((item) => item.userId));
+    const notifications = notifyUserIds
+      .filter((userId) => !existingIds.has(userId))
+      .map((userId) => ({
+        userId,
+        title: "New event you might like",
+        body: `${event.title} · ${event.descriptionShort ?? "Check it out"}`,
+        link: `/events/${event.id}`
+      }));
+
+    if (notifications.length > 0) {
+      await prisma.notification.createMany({ data: notifications });
+    }
+  }
+
   return NextResponse.json({ id: event.id });
 }

@@ -1,0 +1,13 @@
+/**
+ * BACKUP: Original contacts/invite endpoint
+ * 
+ * DEPRECATED - Use /api/referrals and /api/contacts/sync instead
+ * 
+ * This endpoint has been consolidated into:
+ * - POST /api/referrals - Share referral links
+ * - GET /api/referrals - Get referral stats
+ * - POST /api/contacts/sync - Sync device contacts
+ * - GET /api/contacts/sync - Get synced contacts
+ * 
+ * See INTEGRATION_GUIDE.md for migration path
+ */

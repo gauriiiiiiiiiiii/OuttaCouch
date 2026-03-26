@@ -35,17 +35,23 @@ export async function GET(request: NextRequest) {
     .filter((connection) => connection.messages.length > 0)
     .map((connection) => {
       const other = connection.user1Id === token.sub ? connection.user2 : connection.user1;
+      const name = other.displayName ?? other.email ?? other.phone ?? null;
+      if (!name) {
+        return null;
+      }
       const lastMessage = connection.messages[0];
       const score = recencyScore(lastMessage?.sentAt ?? null);
       return {
         connectionId: connection.id,
-        name: other.displayName ?? other.email ?? other.phone ?? "Member",
+        userId: other.id,
+        name,
         photo: other.profilePhotoUrl,
         lastMessage: lastMessage?.content ?? "",
         lastAt: lastMessage?.sentAt ?? null,
         score
       };
     })
+    .filter((chat): chat is NonNullable<typeof chat> => Boolean(chat))
     .sort((a, b) => b.score - a.score);
 
   return NextResponse.json({

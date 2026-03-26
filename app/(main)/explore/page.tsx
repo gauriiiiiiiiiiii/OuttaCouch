@@ -103,7 +103,7 @@ export default function ExplorePage() {
 
   const handleSwipe = async (
     event: EventSummary,
-    action: "left" | "right" | "up" | "down"
+    action: "left" | "right"
   ) => {
     if (event.id.startsWith("dummy")) {
       return;
@@ -124,7 +124,6 @@ export default function ExplorePage() {
       // Swipe left: Skip/hide event from feed
       setHiddenEvents((prev) => new Set([...prev, event.id]));
     }
-    // up (maybe) and down (share) are just logged, no additional action
   };
 
   return (

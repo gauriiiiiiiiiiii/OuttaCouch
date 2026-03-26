@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import PageShell from "@/components/ui/PageShell";
@@ -293,7 +294,11 @@ export default function EventDetailPage() {
                   Host
                 </h2>
                 <div className="mt-4 flex items-center gap-4">
-                  <div className="h-12 w-12 overflow-hidden rounded-full bg-neutral-200">
+                  <Link
+                    href={`/users/${event.host.id}`}
+                    className="h-12 w-12 overflow-hidden rounded-full bg-neutral-200"
+                    aria-label={`View ${event.host.name}`}
+                  >
                     {event.host.photo ? (
                       <img
                         src={event.host.photo}
@@ -301,7 +306,7 @@ export default function EventDetailPage() {
                         className="h-full w-full object-cover"
                       />
                     ) : null}
-                  </div>
+                  </Link>
                   <div>
                     <p className="font-semibold">{event.host.name}</p>
                     <p className="text-sm text-neutral-600">

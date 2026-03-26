@@ -125,7 +125,13 @@ export async function PUT(request: Request) {
       bio: body.bio ?? undefined,
       preferences: Array.isArray(body.preferences) ? body.preferences : undefined,
       profilePhotoUrl: body.profilePhotoUrl ?? undefined,
-      profileComplete: body.profileComplete ?? undefined
+      profileComplete: body.profileComplete ?? undefined,
+      remindersEnabled:
+        typeof body.remindersEnabled === "boolean" ? body.remindersEnabled : undefined,
+      recommendationsEnabled:
+        typeof body.recommendationsEnabled === "boolean"
+          ? body.recommendationsEnabled
+          : undefined
     }
   });
 

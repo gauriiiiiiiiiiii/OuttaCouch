@@ -129,6 +129,10 @@ export async function GET(request: NextRequest) {
       }
       return acc;
     }
+    const name = item.user.displayName ?? item.user.email ?? null;
+    if (!name) {
+      return acc;
+    }
     const recencyDays = Math.max(
       0,
       Math.floor((Date.now() - item.event.eventDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -149,7 +153,7 @@ export async function GET(request: NextRequest) {
       prefScore * 0.15;
     acc[item.userId] = {
       userId: item.userId,
-      name: item.user.displayName ?? item.user.email ?? "Member",
+      name,
       photo: item.user.profilePhotoUrl,
       sharedEventTitle: item.event.title,
       sharedEventId: item.event.id,
@@ -194,6 +198,10 @@ export async function GET(request: NextRequest) {
       if (suggestionsMap[user.id]) {
         continue;
       }
+      const name = user.displayName ?? user.email ?? null;
+      if (!name) {
+        continue;
+      }
       const prefScore = preferenceScore(user.preferences ?? []);
       const distance = distanceScore(
         me?.lat !== null && me?.lat !== undefined ? Number(me.lat) : null,
@@ -205,7 +213,7 @@ export async function GET(request: NextRequest) {
       const score = prefScore * 0.55 + distance * 0.25 + cityBoost;
       suggestionsMap[user.id] = {
         userId: user.id,
-        name: user.displayName ?? user.email ?? "Member",
+        name,
         photo: user.profilePhotoUrl,
         sharedEventTitle: null,
         sharedEventId: null,

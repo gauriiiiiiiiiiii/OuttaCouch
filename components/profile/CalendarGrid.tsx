@@ -18,6 +18,7 @@ type CalendarEvent = {
   title: string;
   date: string;
   category: string;
+  location?: string | null;
 };
 
 const categoryColors: Record<string, string> = {
@@ -38,9 +39,10 @@ type EventPopupProps = {
   events: CalendarEvent[];
   date: string;
   onClose: () => void;
+  onSelectEvent?: (event: CalendarEvent) => void;
 };
 
-function EventPopup({ events, date, onClose }: EventPopupProps) {
+function EventPopup({ events, date, onClose, onSelectEvent }: EventPopupProps) {
   const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,24 +95,37 @@ function EventPopup({ events, date, onClose }: EventPopupProps) {
         </div>
 
         {/* Events List */}
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {events.map((event) => (
-            <div
-              key={event.id}
-              className={`rounded-lg border border-neutral-200 p-3 ${
-                categoryColors[event.category] ?? categoryColors.Other
-              }`}
-            >
-              <p className="font-medium text-sm">{event.title}</p>
-              <p className="text-xs text-neutral-600 mt-1">
-                {format(new Date(event.date), "h:mm a")}
-              </p>
-              <span className="inline-block text-xs font-medium mt-2">
-                {event.category}
-              </span>
-            </div>
-          ))}
-        </div>
+        {events.length > 0 ? (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {events.map((event) => (
+              <button
+                key={event.id}
+                type="button"
+                onClick={() => onSelectEvent?.(event)}
+                className={`w-full text-left rounded-lg border border-neutral-200 p-3 transition hover:border-neutral-300 ${
+                  categoryColors[event.category] ?? categoryColors.Other
+                }`}
+              >
+                <p className="font-medium text-sm">{event.title}</p>
+                <p className="text-xs text-neutral-600 mt-1">
+                  {format(new Date(event.date), "h:mm a")}
+                </p>
+                {event.location ? (
+                  <p className="text-xs text-neutral-500 mt-1">
+                    {event.location}
+                  </p>
+                ) : null}
+                <span className="inline-block text-xs font-medium mt-2">
+                  {event.category}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-center text-sm text-neutral-600">
+            No events for this date.
+          </div>
+        )}
 
         {/* Close Button */}
         <button
@@ -124,14 +139,33 @@ function EventPopup({ events, date, onClose }: EventPopupProps) {
   );
 }
 
-export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
+export default function CalendarGrid({
+  events,
+  title = "Your attendance trail.",
+  onEventSelect
+}: {
+  events: CalendarEvent[];
+  title?: string;
+  onEventSelect?: (event: CalendarEvent) => void;
+}) {
   const now = new Date();
   const baseMonth = startOfMonth(now);
   const [monthOffset, setMonthOffset] = useState(0);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const month = addMonths(baseMonth, monthOffset);
 
-  const eventsByDay = events.reduce<Record<string, CalendarEvent[]>>(
+  const uniqueEvents = (() => {
+    const seen = new Set<string>();
+    return events.filter((event) => {
+      if (seen.has(event.id)) {
+        return false;
+      }
+      seen.add(event.id);
+      return true;
+    });
+  })();
+
+  const eventsByDay = uniqueEvents.reduce<Record<string, CalendarEvent[]>>(
     (acc, event) => {
       const key = format(new Date(event.date), "yyyy-MM-dd");
       // Check if event already exists for this day (prevent duplicates)
@@ -158,7 +192,7 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
             <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
               {format(month, "MMMM yyyy")}
             </p>
-            <p className="text-sm text-neutral-600">Your attendance trail.</p>
+            <p className="text-sm text-neutral-600">{title}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -213,35 +247,14 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
               return (
                 <button
                   key={key}
-                  onClick={() => {
-                    if (hasEvents) {
-                      setSelectedDate(key);
-                    }
-                  }}
-                  disabled={!hasEvents}
-                  className={`relative rounded-xl border border-neutral-100 p-2 text-center text-xs transition ${
-                    inMonth ? "bg-white" : "bg-neutral-50 opacity-50"
+                  onClick={() => setSelectedDate(key)}
+                  className={`relative rounded-xl border border-neutral-100 p-2 text-center text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink ${
+                    inMonth ? "bg-white" : "bg-neutral-50 opacity-60"
                   } ${isToday(day) ? "ring-2 ring-ink" : ""} ${
-                    hasEvents
-                      ? "cursor-pointer hover:border-neutral-300 hover:bg-neutral-50 active:scale-95"
-                      : "cursor-default"
-                  }`}
+                    selectedDate === key ? "bg-neutral-100" : ""
+                  } ${hasEvents ? "bg-neutral-50" : ""} hover:border-neutral-300 hover:bg-neutral-50 active:scale-95 active:bg-neutral-100`}
                 >
                   <div className="text-neutral-700 font-medium">{format(day, "d")}</div>
-                  {hasEvents && (
-                    <div className="mt-1.5 flex justify-center gap-0.5">
-                      {dayEvents.slice(0, 3).map((event, idx) => (
-                        <span
-                          key={idx}
-                          className="h-1.5 w-1.5 rounded-full bg-ink"
-                          title={event.title}
-                        />
-                      ))}
-                      {dayEvents.length > 3 && (
-                        <span className="text-xs text-neutral-400">+{dayEvents.length - 3}</span>
-                      )}
-                    </div>
-                  )}
                 </button>
               );
             })}
@@ -250,11 +263,12 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
       </div>
 
       {/* Event Popup Modal */}
-      {selectedDate && eventsByDay[selectedDate] && (
+      {selectedDate && (
         <EventPopup
-          events={eventsByDay[selectedDate]}
+          events={eventsByDay[selectedDate] ?? []}
           date={selectedDate}
           onClose={() => setSelectedDate(null)}
+          onSelectEvent={onEventSelect}
         />
       )}
     </>

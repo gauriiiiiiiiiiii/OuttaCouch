@@ -13,15 +13,24 @@ export async function GET(request: NextRequest) {
     include: { user1: true, sharedEvent: true }
   });
 
-  const data = requests.map((request) => ({
-    id: request.id,
-    userId: request.user1Id,
-    name: request.user1.displayName ?? request.user1.email ?? request.user1.phone ?? "Member",
-    photo: request.user1.profilePhotoUrl,
-    sharedEventId: request.sharedEventId,
-    sharedEventTitle: request.sharedEvent?.title ?? "Shared event",
-    requestedAt: request.requestedAt
-  }));
+  const data = requests
+    .map((request) => {
+      const name =
+        request.user1.displayName ?? request.user1.email ?? request.user1.phone ?? null;
+      if (!name) {
+        return null;
+      }
+      return {
+        id: request.id,
+        userId: request.user1Id,
+        name,
+        photo: request.user1.profilePhotoUrl,
+        sharedEventId: request.sharedEventId,
+        sharedEventTitle: request.sharedEvent?.title ?? "Shared event",
+        requestedAt: request.requestedAt
+      };
+    })
+    .filter((request): request is NonNullable<typeof request> => Boolean(request));
 
   return NextResponse.json({ requests: data });
 }
