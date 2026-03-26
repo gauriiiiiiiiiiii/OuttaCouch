@@ -86,10 +86,7 @@ export default function ProfileOnboardingPage() {
       return;
     }
     await update({ profileComplete: true });
-    setStatus("Profile saved. Redirecting...");
-    setTimeout(() => {
-      router.replace("/explore");
-    }, 400);
+    router.replace("/explore");
   };
 
   return (
