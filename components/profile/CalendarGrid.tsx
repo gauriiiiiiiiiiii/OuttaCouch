@@ -50,8 +50,8 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
   );
 
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white/90 p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div className="rounded-3xl border border-neutral-200 bg-white/90 p-5 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
             {format(month, "MMMM yyyy")}
@@ -61,14 +61,14 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold"
+            className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold transition hover:border-neutral-300"
             onClick={() => setMonthOffset((prev) => prev - 1)}
           >
             Prev
           </button>
           <button
             type="button"
-            className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold"
+            className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold transition hover:border-neutral-300"
             onClick={() => setMonthOffset((prev) => prev + 1)}
           >
             Next
@@ -90,48 +90,46 @@ export default function CalendarGrid({ events }: { events: CalendarEvent[] }) {
           </div>
         ))}
       </div>
-      <div className="mt-4">
-        <div className="rounded-2xl border border-neutral-200 bg-white/95 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-              {format(month, "MMMM yyyy")}
-            </p>
-            {isSameMonth(month, now) ? (
-              <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500">
-                Current
-              </span>
-            ) : null}
-          </div>
-          <div className="grid grid-cols-7 gap-2">
-            {eachDayOfInterval({
-              start: startOfWeek(startOfMonth(month)),
-              end: endOfWeek(endOfMonth(month))
-            }).map((day) => {
-              const key = format(day, "yyyy-MM-dd");
-              const dayEvents = eventsByDay[key] ?? [];
-              const inMonth = isSameMonth(day, month);
-              return (
-                <div
-                  key={key}
-                  className={`rounded-lg border border-neutral-100 p-2 text-center text-xs ${
-                    inMonth ? "bg-white" : "bg-neutral-50 opacity-50"
-                  } ${isToday(day) ? "ring-2 ring-ink" : ""}`}
-                >
-                  <div className="text-neutral-700">{format(day, "d")}</div>
-                  <div className="mt-1 flex justify-center gap-1">
-                    {dayEvents.slice(0, 3).map((event) => (
-                      <span
-                        key={event.id}
-                        className={`h-2 w-2 rounded-full ${
-                          categoryColors[event.category] ?? "bg-neutral-500"
-                        }`}
-                      />
-                    ))}
-                  </div>
+      <div className="mt-4 rounded-2xl border border-neutral-200 bg-white/95 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+            {format(month, "MMMM yyyy")}
+          </p>
+          {isSameMonth(month, now) ? (
+            <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500">
+              Current
+            </span>
+          ) : null}
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {eachDayOfInterval({
+            start: startOfWeek(startOfMonth(month)),
+            end: endOfWeek(endOfMonth(month))
+          }).map((day) => {
+            const key = format(day, "yyyy-MM-dd");
+            const dayEvents = eventsByDay[key] ?? [];
+            const inMonth = isSameMonth(day, month);
+            return (
+              <div
+                key={key}
+                className={`rounded-xl border border-neutral-100 p-2 text-center text-xs transition ${
+                  inMonth ? "bg-white" : "bg-neutral-50 opacity-50"
+                } ${isToday(day) ? "ring-2 ring-ink" : ""}`}
+              >
+                <div className="text-neutral-700">{format(day, "d")}</div>
+                <div className="mt-1 flex justify-center gap-1">
+                  {dayEvents.slice(0, 3).map((event) => (
+                    <span
+                      key={event.id}
+                      className={`h-2 w-2 rounded-full ${
+                        categoryColors[event.category] ?? "bg-neutral-500"
+                      }`}
+                    />
+                  ))}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

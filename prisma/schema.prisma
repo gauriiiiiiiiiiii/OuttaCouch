@@ -85,6 +85,7 @@ model User {
   otpTokens          OtpToken[]
   notifications      Notification[]
   memories           Memory[]
+  eventSwipes        EventSwipe[]
 
   @@map("users")
 }
@@ -108,6 +109,8 @@ model OtpToken {
   contact    String
   codeHash   String   @map("code_hash")
   purpose    String
+  verificationSid String? @map("verification_sid")
+  attempts   Int      @default(0)
   verifiedAt DateTime? @map("verified_at")
   usedAt     DateTime? @map("used_at")
   expiresAt  DateTime  @map("expires_at")
@@ -151,6 +154,7 @@ model Event {
   tickets          Ticket[]
   sharedConnections Connection[]
   memories        Memory[]
+  swipes          EventSwipe[]
 
   @@map("events")
 }
@@ -257,6 +261,9 @@ model EventSwipe {
   eventId   String   @map("event_id")
   action    String
   createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id])
+  event     Event    @relation(fields: [eventId], references: [id])
 
   @@map("event_swipes")
 }

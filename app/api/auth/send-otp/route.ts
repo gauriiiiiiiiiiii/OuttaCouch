@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
-import { prisma } from "@/lib/prisma";
 import { normalizeContact } from "@/lib/normalizeContact";
-import { sendEmail } from "@/lib/sendEmail";
+import { startVerification } from "@/lib/twilioVerify";
+import { prisma } from "@/lib/prisma";
 
 type SendOtpBody = {
   contact: string;
@@ -10,60 +9,119 @@ type SendOtpBody = {
   purpose?: "signup" | "reset";
 };
 
-function hashCode(code: string) {
-  return crypto.createHash("sha256").update(code).digest("hex");
-}
+const otpLifetimeMs = 5 * 60 * 1000;
+const resendCooldownMs = 30 * 1000;
 
 export async function POST(request: Request) {
   const body = (await request.json()) as SendOtpBody;
+  const rawContact = body.contact?.trim() || "";
+  const isEmail = rawContact.includes("@");
+  const inferredType = isEmail ? "email" : "phone";
+  const type = body.type ?? inferredType;
   const contact = normalizeContact(body.contact);
 
   if (!contact) {
     return NextResponse.json({ error: "Contact required" }, { status: 400 });
   }
 
-  const code = (Math.floor(100000 + Math.random() * 900000)).toString();
-  const codeHash = hashCode(code);
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  if (type === "email" && !isEmail) {
+    return NextResponse.json({ error: "Email required" }, { status: 400 });
+  }
 
-  try {
-    await prisma.otpToken.create({
-      data: {
-        contact,
-        codeHash,
-        purpose: body.purpose ?? "signup",
-        expiresAt
-      }
-    });
-  } catch (error) {
-    console.error("Failed to store OTP", error);
+  if (type === "phone" && isEmail) {
+    return NextResponse.json({ error: "Phone number required" }, { status: 400 });
+  }
+
+  const purpose = body.purpose ?? "signup";
+  const latestToken = await prisma.otpToken.findFirst({
+    where: { contact, purpose, usedAt: null },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (latestToken && Date.now() - latestToken.createdAt.getTime() < resendCooldownMs) {
     return NextResponse.json(
-      { error: "Database unavailable" },
-      { status: 502 }
+      { error: "Please wait before requesting another code." },
+      { status: 429 }
     );
   }
 
-  if ((body.type ?? "email") === "email") {
-    try {
-      const result = await sendEmail({
-        to: contact,
-        subject: "Your OUTTACOUCH verification code",
-        text: `Your OTP is ${code}. It expires in 10 minutes.`
-      });
-
-      if (result.status === "skipped") {
-        return NextResponse.json(
-          { error: "Email service not configured" },
-          { status: 500 }
-        );
-      }
-    } catch (error) {
-      console.error("Failed to send OTP email", error);
+  if (type === "email") {
+    const emailResult = await startVerification(contact, "email");
+    if (emailResult.status === "skipped") {
       return NextResponse.json(
-        { error: "Failed to send OTP email" },
+        { error: emailResult.error || "Twilio Verify not configured" },
+        { status: 500 }
+      );
+    }
+    if (emailResult.status === "failed") {
+      return NextResponse.json({ error: "Failed to send OTP" }, { status: 502 });
+    }
+
+    try {
+      await prisma.otpToken.create({
+        data: {
+          contact,
+          codeHash: "",
+          purpose,
+          verificationSid: emailResult.sid ?? undefined,
+          expiresAt: new Date(Date.now() + otpLifetimeMs)
+        }
+      });
+    } catch (error) {
+      console.error("Failed to store OTP session", error);
+      return NextResponse.json(
+        { error: "Database unavailable" },
         { status: 502 }
       );
     }
+  }
+
+  if (type === "phone") {
+    const smsResult = await startVerification(contact, "sms");
+    if (smsResult.status === "sent") {
+      try {
+        await prisma.otpToken.create({
+          data: {
+            contact,
+            codeHash: "",
+            purpose,
+            verificationSid: smsResult.sid ?? undefined,
+            expiresAt: new Date(Date.now() + otpLifetimeMs)
+          }
+        });
+      } catch (error) {
+        return NextResponse.json(
+          { error: "Database unavailable" },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json({ status: "sent" });
+    }
+
+    const whatsappResult = await startVerification(contact, "whatsapp");
+    if (whatsappResult.status === "sent") {
+      try {
+        await prisma.otpToken.create({
+          data: {
+            contact,
+            codeHash: "",
+            purpose,
+            verificationSid: whatsappResult.sid ?? undefined,
+            expiresAt: new Date(Date.now() + otpLifetimeMs)
+          }
+        });
+      } catch (error) {
+        return NextResponse.json(
+          { error: "Database unavailable" },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json({ status: "sent" });
+    }
+
+    const errorMessage =
+      smsResult.error || whatsappResult.error || "Failed to send OTP";
+    return NextResponse.json({ error: "Failed to send OTP" }, { status: 502 });
   }
 
   return NextResponse.json({ status: "sent" });

@@ -112,7 +112,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ events: scored });
   } catch (error) {
-    console.error("Failed to load events", error);
     return NextResponse.json({ events: [] });
   }
 }

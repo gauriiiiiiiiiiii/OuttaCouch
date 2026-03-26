@@ -10,41 +10,113 @@
 }
 
 body {
-  @apply text-ink;
+  @apply text-ink bg-bg;
   font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
-  background: radial-gradient(circle at top, rgba(46, 111, 149, 0.08), transparent 55%),
-    radial-gradient(circle at 20% 20%, rgba(255, 107, 53, 0.12), transparent 40%),
-    #f7f1e5;
+  background: linear-gradient(135deg, #fafaf8 0%, #f3f1ed 50%, #f7f1e5 100%);
   min-height: 100vh;
   position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-body::before,
-body::after {
+body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-}
-
-body::before {
-  background: radial-gradient(circle at 80% 10%, rgba(11, 11, 11, 0.08), transparent 45%);
-  opacity: 0.5;
-}
-
-body::after {
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.6), transparent 70%);
-  opacity: 0.4;
+  background: radial-gradient(circle at 80% 10%, rgba(46, 111, 149, 0.04), transparent 60%),
+    radial-gradient(circle at 20% 20%, rgba(255, 107, 53, 0.05), transparent 50%);
 }
 
 h1,
 h2,
-h3 {
+h3,
+h4,
+h5,
+h6 {
   font-family: "Fraunces", "Times New Roman", serif;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+}
+
+h1 {
+  @apply text-4xl;
+}
+
+h2 {
+  @apply text-2xl;
+}
+
+h3 {
+  @apply text-lg;
+}
+
+p {
+  @apply text-base text-neutral-700;
+}
+
+a {
+  @apply transition-colors;
 }
 
 ::selection {
-  background: rgba(255, 107, 53, 0.2);
+  @apply bg-accent/20 text-ink;
+}
+
+/* Typography improvements */
+@layer components {
+  .text-subtle {
+    @apply text-neutral-600;
+  }
+
+  .text-muted {
+    @apply text-neutral-500;
+  }
+}
+
+/* Input styling */
+input,
+textarea,
+select {
+  @apply rounded-lg border border-border bg-white/80 px-4 py-2.5 text-base text-ink transition-all duration-200;
+  @apply focus:outline-none focus:ring-2 focus:ring-ocean/20 focus:border-ocean;
+}
+
+input::placeholder,
+textarea::placeholder {
+  @apply text-neutral-500;
+}
+
+textarea {
+  @apply resize-none;
+}
+
+/* Button transitions */
+button {
+  @apply transition-all duration-200 ease-smooth;
+}
+
+/* Link hover transitions */
+a {
+  @apply transition-colors duration-200;
+}
+
+/* Focus visible for accessibility */
+button:focus-visible,
+a:focus-visible {
+  @apply outline-2 outline-offset-2 outline-ocean;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  @apply h-2 w-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-neutral-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-neutral-400 rounded-full hover:bg-neutral-600;
 }

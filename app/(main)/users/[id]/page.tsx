@@ -30,6 +30,13 @@ type PublicProfile = {
     connections: number;
   };
   hostedEvents: HostedEvent[];
+  publicCalendar?: {
+    id: string;
+    title: string;
+    date: string;
+    category: string;
+    status: string;
+  }[];
 };
 
 export default function PublicProfilePage() {
@@ -195,6 +202,32 @@ export default function PublicProfilePage() {
               </div>
             )}
           </div>
+
+          {profile.publicCalendar && profile.publicCalendar.length > 0 ? (
+            <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                  Public calendar
+                </h2>
+                <span className="text-xs text-neutral-400">
+                  {profile.publicCalendar.length} events
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {profile.publicCalendar.slice(0, 6).map((event) => (
+                  <div
+                    key={event.id}
+                    className="rounded-2xl border border-neutral-200 bg-white/95 p-4"
+                  >
+                    <p className="text-sm font-semibold text-ink">{event.title}</p>
+                    <p className="text-xs text-neutral-500">
+                      {new Date(event.date).toLocaleDateString()} · {event.category}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </PageShell>

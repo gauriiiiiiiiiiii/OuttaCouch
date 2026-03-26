@@ -201,6 +201,42 @@ export default function ConnectionsPage() {
       ) : (
         <div className="space-y-6">
           <section className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Your connections</h2>
+                <p className="text-sm text-neutral-500">
+                  {connections.length} {connections.length === 1 ? "person" : "people"} connected with you.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 space-y-3">
+              {connections.length === 0 ? (
+                <p className="text-sm text-neutral-600">No connections yet. Start connecting with people you meet at events!</p>
+              ) : (
+                connections.map((connection) => (
+                  <div
+                    key={connection.id}
+                    className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white/95 p-4"
+                  >
+                    <div className="h-12 w-12 rounded-full bg-neutral-200 flex-shrink-0">
+                      {connection.photo ? (
+                        <img
+                          src={connection.photo}
+                          alt={connection.name}
+                          className="h-full w-full rounded-full object-cover"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{connection.name}</p>
+                      <p className="text-xs text-neutral-500">Connected</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+          <section className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Find friends</h2>

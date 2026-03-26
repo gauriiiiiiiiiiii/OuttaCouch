@@ -16,6 +16,7 @@ export default function VerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const contact = searchParams?.get("contact") || "";
+  const type = searchParams?.get("type") || (contact.includes("@") ? "email" : "phone");
   const { register, handleSubmit } = useForm<VerifyForm>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -66,11 +67,12 @@ export default function VerifyClient() {
     const res = await fetch("/api/auth/send-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contact, type: "email", purpose: "signup" })
+      body: JSON.stringify({ contact, type, purpose: "signup" })
     });
     setSendingOtp(false);
     if (!res.ok) {
-      setOtpStatus("Could not resend OTP.");
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      setOtpStatus(data?.error || "Could not resend OTP.");
       return;
     }
     setOtpStatus("OTP resent.");

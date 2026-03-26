@@ -10,14 +10,14 @@ export default function SectionCard({
   children
 }: SectionCardProps) {
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold">{title}</h2>
+    <div className="rounded-2xl border border-border bg-white shadow-sm hover:shadow-md transition-all duration-300 p-6 md:p-8">
+      <div className="space-y-2">
+        <h2 className="text-xl font-semibold text-ink">{title}</h2>
         {description ? (
-          <p className="text-sm text-neutral-600">{description}</p>
+          <p className="text-sm text-neutral-600 leading-relaxed">{description}</p>
         ) : null}
       </div>
-      <div className="mt-4">{children}</div>
+      <div className="mt-6">{children}</div>
     </div>
   );
 }

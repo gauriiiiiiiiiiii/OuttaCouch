@@ -1,9 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { Server } from "socket.io";
+import { Server, ServerOptions } from "socket.io";
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!(res.socket as any).server.io) {
-    const io = new Server((res.socket as any).server, {
+  const socket = res.socket as (typeof res.socket) & { server?: any };
+  if (!socket.server?.io) {
+    const io = new Server(socket.server || res.socket, {
       path: "/api/socketio",
       addTrailingSlash: false
     });
@@ -29,7 +30,10 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       });
     });
 
-    (res.socket as any).server.io = io;
+    const socketServer = res.socket as (typeof res.socket) & { server?: any };
+    if (socketServer.server) {
+      socketServer.server.io = io;
+    }
     (globalThis as { io?: Server }).io = io;
   }
   res.end();

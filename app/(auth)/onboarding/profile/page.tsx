@@ -3,9 +3,12 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
 import { StorageService } from "@/lib/services/storage";
+
+export const dynamic = "force-dynamic";
 
 const preferenceOptions = [
   "Music",
@@ -29,6 +32,8 @@ type ProfileForm = {
 
 export default function ProfileOnboardingPage() {
   const router = useRouter();
+  const session = useSession();
+  const update = session?.update || (() => Promise.resolve());
   const { register, handleSubmit, setValue } = useForm<ProfileForm>({
     defaultValues: { preferences: [], profilePhotoUrl: "" }
   });
@@ -80,10 +85,11 @@ export default function ProfileOnboardingPage() {
       setError("Could not save profile.");
       return;
     }
+    await update({ profileComplete: true });
     setStatus("Profile saved. Redirecting...");
     setTimeout(() => {
-      window.location.href = "/explore";
-    }, 600);
+      router.replace("/explore");
+    }, 400);
   };
 
   return (

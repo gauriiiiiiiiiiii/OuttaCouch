@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(request: Request) {
   try {
-    const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+    const token = await getToken({
+      req: request as any as Parameters<typeof getToken>[0]["req"],
+      secret: process.env.NEXTAUTH_SECRET
+    });
     if (!token?.sub) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -17,22 +20,55 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const [eventsHostedCount, eventsAttended, connectionsCount] =
-      await Promise.all([
-        prisma.event.count({ where: { hostId: user.id } }),
-        prisma.eventAttendee.findMany({
-          where: { userId: user.id },
-          include: { event: true }
-        }),
-        prisma.connection.count({
-          where: {
-            status: "accepted",
-            OR: [{ user1Id: user.id }, { user2Id: user.id }]
-          }
-        })
-      ]);
+    const [
+      hostedEvents,
+      privateAttendees,
+      connectionsCount,
+      swipedEvents
+    ] = await Promise.all([
+      prisma.event.findMany({
+        where: { hostId: user.id },
+        select: {
+          id: true,
+          title: true,
+          eventDate: true,
+          category: true,
+          coverImageUrl: true
+        }
+      }),
+      prisma.eventAttendee.findMany({
+        where: {
+          userId: user.id,
+          status: { in: ["committed", "attended", "missed"] }
+        },
+        include: { event: true }
+      }),
+      prisma.connection.count({
+        where: {
+          status: "accepted",
+          OR: [{ user1Id: user.id }, { user2Id: user.id }]
+        }
+      }),
+      prisma.eventSwipe.findMany({
+        where: {
+          userId: user.id,
+          action: "up"
+        },
+        include: { event: true }
+      })
+    ]);
 
-    const attendedEvents = eventsAttended.map((item) => ({
+    // Private Calendar: User's hosted events + events they committed to
+    const hostedCalendarEvents = hostedEvents.map((event) => ({
+      id: event.id,
+      title: event.title,
+      date: event.eventDate.toISOString(),
+      category: event.category,
+      status: "hosted",
+      imageUrl: event.coverImageUrl
+    }));
+
+    const attendedCalendarEvents = privateAttendees.map((item) => ({
       id: item.event.id,
       title: item.event.title,
       date: item.event.eventDate.toISOString(),
@@ -41,23 +77,41 @@ export async function GET(request: Request) {
       imageUrl: item.event.coverImageUrl
     }));
 
+    const privateCalendar = [...hostedCalendarEvents, ...attendedCalendarEvents];
+    const privateEventIds = new Set(privateCalendar.map((event) => event.id));
+    
+    // Public Calendar: Events the user swiped on (excluding private calendar events)
+    const publicCalendar = swipedEvents
+      .map((item) => ({
+        id: item.event.id,
+        title: item.event.title,
+        date: item.event.eventDate.toISOString(),
+        category: item.event.category,
+        status: item.action,
+        imageUrl: item.event.coverImageUrl
+      }))
+      .filter((event) => !privateEventIds.has(event.id));
+
     return NextResponse.json({
       user,
       stats: {
-        eventsHosted: eventsHostedCount,
-        eventsAttended: eventsAttended.length,
+        eventsHosted: hostedEvents.length,
+        eventsAttended: privateAttendees.length,
         connections: connectionsCount
       },
-      attendedEvents
+      privateCalendar,
+      publicCalendar
     });
   } catch (error) {
-    console.error("Failed to load profile", error);
     return NextResponse.json({ error: "Database unavailable" }, { status: 502 });
   }
 }
 
 export async function PUT(request: Request) {
-  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({
+    req: request as any as Parameters<typeof getToken>[0]["req"],
+    secret: process.env.NEXTAUTH_SECRET
+  });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -79,7 +133,10 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({
+    req: request as any as Parameters<typeof getToken>[0]["req"],
+    secret: process.env.NEXTAUTH_SECRET
+  });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

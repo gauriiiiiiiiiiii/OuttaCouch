@@ -27,6 +27,8 @@ export async function GET(
   }
 
   const isSelf = token?.sub === user.id;
+  const hasViewer = !!token?.sub && !isSelf;
+  let connected = false;
 
   if (!isSelf) {
     if (user.profileVisibility === "private") {
@@ -38,7 +40,7 @@ export async function GET(
         return NextResponse.json({ error: "Profile not available" }, { status: 403 });
       }
 
-      const connected = await prisma.connection.findFirst({
+      const connection = await prisma.connection.findFirst({
         where: {
           status: "accepted",
           OR: [
@@ -48,35 +50,70 @@ export async function GET(
         }
       });
 
+      connected = !!connection;
       if (!connected) {
         return NextResponse.json({ error: "Profile not available" }, { status: 403 });
       }
     }
   }
 
-  const [eventsHostedCount, connectionsCount, hostedEvents] = await Promise.all([
-    prisma.event.count({ where: { hostId: user.id } }),
-    prisma.connection.count({
+  if (hasViewer && !connected) {
+    const connection = await prisma.connection.findFirst({
       where: {
         status: "accepted",
-        OR: [{ user1Id: user.id }, { user2Id: user.id }]
+        OR: [
+          { user1Id: token.sub as string, user2Id: user.id },
+          { user1Id: user.id, user2Id: token.sub as string }
+        ]
       }
-    }),
-    prisma.event.findMany({
-      where: { hostId: user.id },
-      orderBy: { eventDate: "asc" },
-      take: 6,
-      select: {
-        id: true,
-        title: true,
-        eventDate: true,
-        venueName: true,
-        coverImageUrl: true,
-        isFree: true,
-        ticketPrice: true
-      }
-    })
-  ]);
+    });
+    connected = !!connection;
+  }
+
+  const canSeeCalendar = isSelf || connected;
+
+  const [eventsHostedCount, connectionsCount, hostedEvents, swipedEvents] =
+    await Promise.all([
+      prisma.event.count({ where: { hostId: user.id } }),
+      prisma.connection.count({
+        where: {
+          status: "accepted",
+          OR: [{ user1Id: user.id }, { user2Id: user.id }]
+        }
+      }),
+      prisma.event.findMany({
+        where: { hostId: user.id },
+        orderBy: { eventDate: "asc" },
+        take: 6,
+        select: {
+          id: true,
+          title: true,
+          eventDate: true,
+          venueName: true,
+          coverImageUrl: true,
+          isFree: true,
+          ticketPrice: true
+        }
+      }),
+      canSeeCalendar
+        ? prisma.eventSwipe.findMany({
+            where: {
+              userId: user.id,
+              action: "up"
+            },
+            include: { event: true }
+          })
+        : Promise.resolve([])
+    ]);
+
+  const publicCalendar = swipedEvents.map((item) => ({
+    id: item.event.id,
+    title: item.event.title,
+    date: item.event.eventDate.toISOString(),
+    category: item.event.category,
+    status: item.action,
+    imageUrl: item.event.coverImageUrl
+  }));
 
   return NextResponse.json({
     user,
@@ -92,6 +129,7 @@ export async function GET(
       coverImageUrl: event.coverImageUrl,
       isFree: event.isFree,
       ticketPrice: event.ticketPrice?.toString() ?? null
-    }))
+    })),
+    publicCalendar: canSeeCalendar ? publicCalendar : []
   });
 }

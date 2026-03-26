@@ -48,12 +48,20 @@ const handler = NextAuth({
   ],
   session: { strategy: "jwt" },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.sub = user.id;
         token.profileComplete = (user as { profileComplete?: boolean })
           .profileComplete;
         token.isDeactivated = (user as { isDeactivated?: boolean }).isDeactivated;
+      } else if (trigger === "update" && session) {
+        const nextSession = session as { profileComplete?: boolean; isDeactivated?: boolean };
+        if (typeof nextSession.profileComplete === "boolean") {
+          token.profileComplete = nextSession.profileComplete;
+        }
+        if (typeof nextSession.isDeactivated === "boolean") {
+          token.isDeactivated = nextSession.isDeactivated;
+        }
       } else if (token.sub) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },

@@ -19,8 +19,8 @@ export default function NotificationSettingsPage() {
       backHref="/settings"
       backLabel="Back to settings"
     >
-      <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
-        <div className="space-y-4">
+      <div className="rounded-3xl border border-neutral-200 bg-white/90 p-6 shadow-sm">
+        <div className="space-y-5">
           <p className="text-sm text-neutral-600">
             Enable notifications to receive event reminders and messages.
           </p>
@@ -33,7 +33,7 @@ export default function NotificationSettingsPage() {
             ].map((label) => (
               <label
                 key={label}
-                className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white/95 px-4 py-3 text-sm"
+                className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white/95 px-4 py-3 text-sm shadow-sm"
               >
                 <span>{label}</span>
                 <input type="checkbox" defaultChecked />
@@ -41,7 +41,7 @@ export default function NotificationSettingsPage() {
             ))}
           </div>
           <button
-            className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment"
+            className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment transition hover:opacity-90"
             onClick={enable}
           >
             Enable notifications

@@ -513,7 +513,7 @@ export default function EditEventPage() {
               type="button"
               className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment"
               onClick={async () => {
-                const valid = await trigger(activeStep.fields as any);
+                const valid = await trigger(activeStep.fields);
                 if (valid) {
                   setStep((prev) => Math.min(totalSteps - 1, prev + 1));
                 }
