@@ -11,6 +11,8 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = token.sub;
+
   const event = await prisma.event.findUnique({ where: { id: params.id } });
   if (!event) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -76,7 +78,7 @@ export async function POST(
       }))
       .filter((item) => item.sendAt.getTime() > now)
       .map((item) => ({
-        userId: token.sub,
+        userId,
         eventId: event.id,
         type: item.type,
         title: "Upcoming Event Reminder",
