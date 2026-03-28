@@ -3,7 +3,11 @@ import { PrismaClient } from "@prisma/client";
 import { Pool } from "pg";
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  // Allow opting into relaxed TLS when using self-signed certificates (e.g., some staging DBs)
+  ssl: process.env.PGSSL_REJECT_UNAUTHORIZED === "false"
+    ? { rejectUnauthorized: false }
+    : undefined
 });
 
 const adapter = new PrismaPg(pool);
