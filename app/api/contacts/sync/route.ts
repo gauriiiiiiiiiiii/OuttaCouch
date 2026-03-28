@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if contact is already a registered user
-        let registeredUser = await prisma.user.findFirst({
+        const registeredUser = await prisma.user.findFirst({
           where: {
             phone: normalizedPhone
           },
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
  * Get synced contacts for user
  * GET /api/contacts/sync
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -192,6 +192,7 @@ export async function GET(request: NextRequest) {
       contacts
     });
   } catch (error) {
+    console.error("Fetch synced contacts error", error);
     return NextResponse.json(
       { error: "Failed to fetch contacts" },
       { status: 500 }

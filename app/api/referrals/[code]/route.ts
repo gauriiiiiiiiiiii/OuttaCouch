@@ -6,15 +6,16 @@ import { prisma } from "@/lib/prisma";
  * Called when user visits /join?ref=[code]
  */
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { code: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ code: string }> }
 ) {
-  const code = params.code.toUpperCase();
+  const { code } = await params;
+  const normalizedCode = code.toUpperCase();
 
   try {
     // Find invitation
     const invitation = await prisma.contactInvitation.findUnique({
-      where: { referralCode: code },
+      where: { referralCode: normalizedCode },
       select: {
         id: true,
         fromUserId: true,
@@ -44,7 +45,7 @@ export async function GET(
     // Track click
     if (invitation.status !== "clicked") {
       await prisma.contactInvitation.update({
-        where: { referralCode: code },
+        where: { referralCode: normalizedCode },
         data: {
           status: "clicked",
           clickedAt: new Date()
@@ -54,7 +55,7 @@ export async function GET(
       // Update referral link stats
       await prisma.referralLink.updateMany({
         where: {
-          code: code,
+          code: normalizedCode,
           fromUserId: invitation.fromUserId
         },
         data: { clicks: { increment: 1 } }
@@ -62,12 +63,13 @@ export async function GET(
     }
 
     return NextResponse.json({
-      code,
+      code: normalizedCode,
       invitedPhone: invitation.toPhone,
       fromUser: invitation.fromUser,
       message: "Referral link tracked successfully"
     });
   } catch (error) {
+    console.error("Referral code GET error", error);
     return NextResponse.json({ error: "Failed to process referral" }, { status: 500 });
   }
 }
@@ -78,9 +80,10 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
-  const code = params.code.toUpperCase();
+  const { code } = await params;
+  const normalizedCode = code.toUpperCase();
   const body = (await request.json()) as { newUserId: string };
 
   if (!body.newUserId) {
@@ -90,15 +93,15 @@ export async function POST(
   try {
     // Update invitation with registered user
     const invitation = await prisma.contactInvitation.findUnique({
-      where: { referralCode: code }
+      where: { referralCode: normalizedCode }
     });
 
     if (!invitation) {
       return NextResponse.json({ error: "Invalid referral code" }, { status: 404 });
     }
 
-    await prisma.contactInvitation.update({
-      where: { referralCode: code },
+      await prisma.contactInvitation.update({
+        where: { referralCode: normalizedCode },
       data: {
         status: "registered",
         registeredUserId: body.newUserId,
@@ -168,7 +171,7 @@ export async function POST(
     // Update referral link stats
     await prisma.referralLink.updateMany({
       where: {
-        code: code,
+        code: normalizedCode,
         fromUserId: invitation.fromUserId
       },
       data: { registrations: { increment: 1 } }
@@ -179,6 +182,7 @@ export async function POST(
       connection: { created: true }
     });
   } catch (error) {
+    console.error("Referral code POST error", error);
     return NextResponse.json({ error: "Failed to complete registration" }, { status: 500 });
   }
 }

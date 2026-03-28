@@ -4,13 +4,14 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
+  const { userId } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   const viewerId = token?.sub ?? null;
 
   const user = await prisma.user.findUnique({
-    where: { id: params.userId },
+    where: { id: userId },
     select: { id: true, profileVisibility: true }
   });
 

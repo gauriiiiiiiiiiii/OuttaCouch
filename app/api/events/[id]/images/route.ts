@@ -12,10 +12,11 @@ type ImagePayload = {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const images = await prisma.eventImage.findMany({
-    where: { eventId: params.id },
+    where: { eventId: id },
     orderBy: { orderIndex: "asc" }
   });
 
@@ -24,15 +25,16 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const event = await prisma.event.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: { hostId: true }
   });
 
@@ -53,21 +55,21 @@ export async function POST(
 
   if (body.isCover) {
     await prisma.event.update({
-      where: { id: params.id },
+      where: { id },
       data: { coverImageUrl: imageUrl }
     });
     await prisma.eventImage.updateMany({
-      where: { eventId: params.id, isCover: true },
+      where: { eventId: id, isCover: true },
       data: { isCover: false }
     });
   }
 
   const orderIndex =
-    body.orderIndex ?? (await prisma.eventImage.count({ where: { eventId: params.id } }));
+    body.orderIndex ?? (await prisma.eventImage.count({ where: { eventId: id } }));
 
   const image = await prisma.eventImage.create({
     data: {
-      eventId: params.id,
+      eventId: id,
       imageUrl,
       isCover: Boolean(body.isCover),
       orderIndex
@@ -79,15 +81,16 @@ export async function POST(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const event = await prisma.event.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: { hostId: true }
   });
 
@@ -106,11 +109,11 @@ export async function PUT(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     await prisma.event.update({
-      where: { id: params.id },
+      where: { id },
       data: { coverImageUrl: image.imageUrl }
     });
     await prisma.eventImage.updateMany({
-      where: { eventId: params.id, isCover: true },
+      where: { eventId: id, isCover: true },
       data: { isCover: false }
     });
     await prisma.eventImage.update({
@@ -122,7 +125,7 @@ export async function PUT(
 
   if (body.direction) {
     const images = await prisma.eventImage.findMany({
-      where: { eventId: params.id },
+      where: { eventId: id },
       orderBy: { orderIndex: "asc" }
     });
     const index = images.findIndex((image) => image.id === body.imageId);
@@ -153,15 +156,16 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const event = await prisma.event.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: { hostId: true }
   });
 

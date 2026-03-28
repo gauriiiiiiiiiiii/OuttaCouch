@@ -1,10 +1,19 @@
+import type { Server as HttpServer } from "http";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { Server, ServerOptions } from "socket.io";
+import { Server as IOServer } from "socket.io";
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const socket = res.socket as (typeof res.socket) & { server?: any };
-  if (!socket.server?.io) {
-    const io = new Server(socket.server || res.socket, {
+  type NetServerWithIo = HttpServer & { io?: IOServer };
+  const socketServer = (res.socket as unknown as { server?: NetServerWithIo })?.server;
+  if (!socketServer) {
+    res.end();
+    return;
+  }
+
+  const server = socketServer as NetServerWithIo;
+
+  if (!server.io) {
+    const io = new IOServer(server, {
       path: "/api/socketio",
       addTrailingSlash: false
     });
@@ -30,11 +39,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       });
     });
 
-    const socketServer = res.socket as (typeof res.socket) & { server?: any };
-    if (socketServer.server) {
-      socketServer.server.io = io;
-    }
-    (globalThis as { io?: Server }).io = io;
+    server.io = io;
+    (globalThis as { io?: IOServer }).io = io;
   }
   res.end();
 }

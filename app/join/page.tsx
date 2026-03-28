@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 
 interface ReferrerInfo {
@@ -16,6 +16,14 @@ interface ReferrerInfo {
 }
 
 export default function JoinPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <JoinContent />
+    </Suspense>
+  );
+}
+
+function JoinContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [referrerInfo, setReferrerInfo] = useState<ReferrerInfo | null>(null);
@@ -57,14 +65,7 @@ export default function JoinPage() {
   }, [searchParams, router]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent mx-auto mb-4"></div>
-          <p>Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (error) {
@@ -212,6 +213,17 @@ export default function JoinPage() {
         <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
           <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v4h8v-4zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
         </svg>
+      </div>
+    </div>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500">
+      <div className="text-white text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent mx-auto mb-4"></div>
+        <p>Loading...</p>
       </div>
     </div>
   );

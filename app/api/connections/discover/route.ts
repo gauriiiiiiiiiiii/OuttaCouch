@@ -135,8 +135,7 @@ export async function GET(request: NextRequest) {
       };
     })
     .filter((result): result is NonNullable<typeof result> => Boolean(result))
-    .sort((a, b) => b.score - a.score)
-    .map(({ score, ...rest }) => rest);
+    .sort((a, b) => b.score - a.score);
 
   return NextResponse.json({ results });
 }

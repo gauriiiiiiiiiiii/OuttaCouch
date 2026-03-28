@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import SectionCard from "@/components/ui/SectionCard";
 
 type PasswordForm = {
@@ -11,7 +11,6 @@ type PasswordForm = {
 };
 
 export default function ResetPasswordClient() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const contact = searchParams?.get("contact") || "";
   const token = searchParams?.get("token") || "";

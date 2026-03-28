@@ -90,6 +90,7 @@ export async function POST(request: Request) {
           }
         });
       } catch (error) {
+        console.error("Failed to store OTP session", error);
         return NextResponse.json(
           { error: "Database unavailable" },
           { status: 502 }
@@ -111,6 +112,7 @@ export async function POST(request: Request) {
           }
         });
       } catch (error) {
+        console.error("Failed to store OTP session", error);
         return NextResponse.json(
           { error: "Database unavailable" },
           { status: 502 }
@@ -119,9 +121,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: "sent" });
     }
 
-    const errorMessage =
-      smsResult.error || whatsappResult.error || "Failed to send OTP";
-    return NextResponse.json({ error: "Failed to send OTP" }, { status: 502 });
+    const errorMessage = smsResult.error || whatsappResult.error || "Failed to send OTP";
+    return NextResponse.json({ error: errorMessage }, { status: 502 });
   }
 
   return NextResponse.json({ status: "sent" });

@@ -60,7 +60,7 @@ export default function EditProfilePage() {
           });
           setPhotoPreview(json.user.profilePhotoUrl ?? null);
         }
-      } catch (error) {
+      } catch {
         if (active) {
           setStatus("Could not load profile.");
         }

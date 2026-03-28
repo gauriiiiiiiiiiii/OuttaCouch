@@ -147,7 +147,7 @@ export default function HostDashboardPage() {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/events/${event.id}`);
       setActionStatus("Link copied.");
-    } catch (err) {
+    } catch {
       setActionStatus("Could not copy link.");
     }
   };

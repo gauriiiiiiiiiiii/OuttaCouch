@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const token = await getToken({
-      req: request as any as Parameters<typeof getToken>[0]["req"],
+      req: request,
       secret: process.env.NEXTAUTH_SECRET
     });
     if (!token?.sub) {
@@ -103,13 +103,14 @@ export async function GET(request: Request) {
       publicCalendar
     });
   } catch (error) {
+    console.error("User profile fetch error", error);
     return NextResponse.json({ error: "Database unavailable" }, { status: 502 });
   }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   const token = await getToken({
-    req: request as any as Parameters<typeof getToken>[0]["req"],
+    req: request,
     secret: process.env.NEXTAUTH_SECRET
   });
   if (!token?.sub) {
@@ -138,9 +139,9 @@ export async function PUT(request: Request) {
   return NextResponse.json({ user });
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   const token = await getToken({
-    req: request as any as Parameters<typeof getToken>[0]["req"],
+    req: request,
     secret: process.env.NEXTAUTH_SECRET
   });
   if (!token?.sub) {

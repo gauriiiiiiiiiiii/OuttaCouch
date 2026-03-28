@@ -155,7 +155,7 @@ export default function EditEventPage() {
         setValue("maxAttendees", data.maxAttendees);
         setValue("coverImageUrl", data.coverImageUrl ?? undefined);
         setImagePreview(data.coverImageUrl ?? null);
-      } catch (err) {
+      } catch {
         if (active) {
           setError("Could not load event.");
         }

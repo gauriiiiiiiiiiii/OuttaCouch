@@ -58,7 +58,7 @@ export default function MemoriesPage() {
           setData(json);
           setMemories(memoriesJson.memories ?? []);
         }
-      } catch (err) {
+      } catch {
         if (active) {
           setError("Could not load memories.");
         }

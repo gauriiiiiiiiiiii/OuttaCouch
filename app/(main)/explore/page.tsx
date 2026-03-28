@@ -27,7 +27,7 @@ export default function ExplorePage() {
         if (active) {
           setEvents(data.events || []);
         }
-      } catch (err) {
+      } catch {
         if (active) {
           setError("Could not load events.");
         }

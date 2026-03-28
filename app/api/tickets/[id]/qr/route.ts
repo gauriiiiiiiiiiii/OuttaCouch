@@ -4,15 +4,16 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const ticket = await prisma.ticket.findUnique({
-    where: { id: params.id }
+    where: { id }
   });
 
   if (!ticket || ticket.userId !== token.sub) {

@@ -55,7 +55,7 @@ export default function EventDetailPage() {
         if (active) {
           setEvent(data);
         }
-      } catch (err) {
+      } catch {
         if (active) {
           setError("Could not load event.");
         }
@@ -92,7 +92,7 @@ export default function EventDetailPage() {
           (item) => item.category === event.category && item.id !== event.id
         );
         setSimilarEvents(filtered.slice(0, 3));
-      } catch (err) {
+      } catch {
         if (active) {
           setSimilarEvents([]);
         }
@@ -194,7 +194,7 @@ export default function EventDetailPage() {
       } else {
         setCommitStatus("failed");
       }
-    } catch (err) {
+    } catch {
       setCommitStatus("failed");
     }
   };

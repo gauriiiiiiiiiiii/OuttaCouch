@@ -46,13 +46,13 @@ export default function CalendarPage() {
               } else {
                 localStorage.removeItem("calendarPendingEvent");
               }
-            } catch (err) {
+            } catch {
               // ignore parse errors
             }
           }
           setData(json);
         }
-      } catch (err) {
+      } catch {
         if (active) {
           setError("Could not load calendar.");
         }

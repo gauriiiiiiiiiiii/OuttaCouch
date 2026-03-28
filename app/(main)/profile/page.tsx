@@ -72,13 +72,13 @@ export default function ProfilePage() {
               } else {
                 localStorage.removeItem("calendarPendingEvent");
               }
-            } catch (err) {
+            } catch {
               // ignore parse errors
             }
           }
           setData(json);
         }
-      } catch (err) {
+      } catch {
         if (active) {
           setError("Could not load profile.");
         }

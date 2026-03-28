@@ -71,6 +71,16 @@ export async function POST(request: NextRequest) {
         }
       });
 
+      if (existingInvitation) {
+        invitations.push({
+          id: existingInvitation.id,
+          phone,
+          referralCode: existingInvitation.referralCode,
+          status: "already-invited"
+        });
+        continue;
+      }
+
       // Generate unique referral code
       let referralCode = "";
       let isUnique = false;
@@ -145,7 +155,7 @@ export async function POST(request: NextRequest) {
  * Get user's referral stats
  * GET /api/referrals
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -192,6 +202,7 @@ export async function GET(request: NextRequest) {
       referralLinks
     });
   } catch (error) {
+    console.error("Referral fetch error", error);
     return NextResponse.json({ error: "Failed to fetch referral data" }, { status: 500 });
   }
 }

@@ -4,15 +4,16 @@ import { prisma } from "@/lib/prisma";
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const connection = await prisma.connection.findUnique({
-    where: { id: params.id }
+    where: { id }
   });
 
   if (!connection || connection.user2Id !== token.sub) {
@@ -20,7 +21,7 @@ export async function PUT(
   }
 
   const updated = await prisma.connection.update({
-    where: { id: params.id },
+    where: { id },
     data: { status: "declined" }
   });
 

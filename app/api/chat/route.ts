@@ -20,17 +20,6 @@ export async function GET(request: NextRequest) {
     }
   });
 
-  const recencyScore = (date?: Date | null) => {
-    if (!date) {
-      return 0;
-    }
-    const days = Math.max(
-      0,
-      Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
-    );
-    return Math.exp(-days / 14);
-  };
-
   const chats = connections
     .filter((connection) => connection.messages.length > 0)
     .map((connection) => {
@@ -40,7 +29,6 @@ export async function GET(request: NextRequest) {
         return null;
       }
       const lastMessage = connection.messages[0];
-      const score = recencyScore(lastMessage?.sentAt ?? null);
       return {
         connectionId: connection.id,
         userId: other.id,
@@ -48,13 +36,11 @@ export async function GET(request: NextRequest) {
         photo: other.profilePhotoUrl,
         lastMessage: lastMessage?.content ?? "",
         lastAt: lastMessage?.sentAt ?? null,
-        score
+        sortAt: lastMessage?.sentAt ? lastMessage.sentAt.getTime() : 0
       };
     })
     .filter((chat): chat is NonNullable<typeof chat> => Boolean(chat))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.sortAt - a.sortAt);
 
-  return NextResponse.json({
-    chats: chats.map(({ score, ...chat }) => chat)
-  });
+  return NextResponse.json({ chats });
 }

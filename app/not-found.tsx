@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function NotFound() {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center gap-4 px-6 py-20 text-center">
@@ -5,9 +7,9 @@ export default function NotFound() {
       <p className="text-neutral-700">
         The page you are looking for does not exist.
       </p>
-      <a className="rounded-full bg-ink px-5 py-2 text-parchment" href="/">
+      <Link className="rounded-full bg-ink px-5 py-2 text-parchment" href="/">
         Back to home
-      </a>
+      </Link>
     </main>
   );
 }

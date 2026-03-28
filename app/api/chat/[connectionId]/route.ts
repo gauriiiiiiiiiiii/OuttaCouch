@@ -5,15 +5,16 @@ import { emitToRoom } from "@/lib/socketServer";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { connectionId: string } }
+  { params }: { params: Promise<{ connectionId: string }> }
 ) {
+  const { connectionId } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const connection = await prisma.connection.findUnique({
-    where: { id: params.connectionId }
+    where: { id: connectionId },
   });
 
   if (!connection || (connection.user1Id !== token.sub && connection.user2Id !== token.sub)) {
@@ -21,7 +22,7 @@ export async function GET(
   }
 
   const messages = await prisma.message.findMany({
-    where: { connectionId: params.connectionId },
+    where: { connectionId },
     orderBy: { sentAt: "asc" }
   });
 
@@ -30,15 +31,16 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { connectionId: string } }
+  { params }: { params: Promise<{ connectionId: string }> }
 ) {
+  const { connectionId } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const connection = await prisma.connection.findUnique({
-    where: { id: params.connectionId }
+    where: { id: connectionId }
   });
 
   if (!connection || (connection.user1Id !== token.sub && connection.user2Id !== token.sub)) {
@@ -52,14 +54,14 @@ export async function POST(
 
   const message = await prisma.message.create({
     data: {
-      connectionId: params.connectionId,
+      connectionId,
       senderId: token.sub,
       content: body.content,
       type: "text"
     }
   });
 
-  emitToRoom(params.connectionId, "message", message);
+  emitToRoom(connectionId, "message", message);
 
   return NextResponse.json({ message });
 }

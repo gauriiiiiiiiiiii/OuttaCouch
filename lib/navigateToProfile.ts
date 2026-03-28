@@ -1,6 +1,6 @@
-import type { AppRouterInstance } from "next/navigation";
+type RouterLike = { push: (href: string) => void };
 
-export const navigateToProfile = (router: AppRouterInstance, userId: string) => {
+export const navigateToProfile = (router: RouterLike, userId: string) => {
   if (!userId) {
     return;
   }

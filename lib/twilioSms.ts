@@ -3,7 +3,7 @@
  * For sending promotional messages, invitations, etc.
  */
 
-type TwilioChannel = "sms" | "whatsapp";
+export type TwilioChannel = "sms" | "whatsapp";
 
 async function twilioSmsRequest(
   endpoint: string,
@@ -97,7 +97,7 @@ export async function sendWhatsAppMessage(
 export async function sendInvitationMessage(
   to: string,
   referralLink: string,
-  channel: "sms" | "whatsapp",
+  channel: TwilioChannel,
   senderName?: string
 ): Promise<{ status: "sent" | "failed"; sid?: string; error?: string }> {
   const appName = "OuttaCouch";

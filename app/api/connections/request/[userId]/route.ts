@@ -5,8 +5,9 @@ import { sendNotificationEmail } from "@/lib/notifications";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
+  const { userId } = await params;
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,15 +16,15 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
 
   const targetUser = await prisma.user.findUnique({
-    where: { id: params.userId },
+    where: { id: userId },
     select: { id: true, email: true, displayName: true }
   });
 
   const existing = await prisma.connection.findFirst({
     where: {
       OR: [
-        { user1Id: token.sub, user2Id: params.userId },
-        { user1Id: params.userId, user2Id: token.sub }
+        { user1Id: token.sub, user2Id: userId },
+        { user1Id: userId, user2Id: token.sub }
       ]
     }
   });
@@ -69,7 +70,7 @@ export async function POST(
 
   const reciprocal = await prisma.connection.findFirst({
     where: {
-      user1Id: params.userId,
+      user1Id: userId,
       user2Id: token.sub,
       status: "pending"
     }
@@ -114,7 +115,7 @@ export async function POST(
   const connection = await prisma.connection.create({
     data: {
       user1Id: token.sub,
-      user2Id: params.userId,
+      user2Id: userId,
       status: "pending",
       sharedEventId: body.sharedEventId ?? null
     }
@@ -122,7 +123,7 @@ export async function POST(
 
   await prisma.notification.create({
     data: {
-      userId: params.userId,
+      userId: userId,
       title: "New connection request",
       body: "You have a new connection request.",
       link: "/connections"

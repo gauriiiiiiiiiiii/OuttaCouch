@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
       message: `Imported ${imported.length} contacts successfully`
     });
   } catch (error) {
+    console.error("Import contacts error", error);
     return NextResponse.json({ error: "Failed to import contacts" }, { status: 500 });
   }
 }
@@ -130,6 +131,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ contacts, stats });
   } catch (error) {
+    console.error("Fetch contacts error", error);
     return NextResponse.json({ error: "Failed to fetch contacts" }, { status: 500 });
   }
 }
