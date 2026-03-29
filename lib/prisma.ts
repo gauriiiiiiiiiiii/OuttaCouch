@@ -2,14 +2,17 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { Pool } from "pg";
 
-const shouldRelaxTls =
-  process.env.PGSSL_REJECT_UNAUTHORIZED === "false" ||
-  process.env.NODE_ENV === "production";
+// Ensure sslmode=require is present and always relax cert verification for hosted DBs with self-signed chains.
+const rawDbUrl = process.env.DATABASE_URL;
+const connectionString = rawDbUrl
+  ? rawDbUrl.includes("sslmode=")
+    ? rawDbUrl
+    : `${rawDbUrl}${rawDbUrl.includes("?") ? "&" : "?"}sslmode=require`
+  : undefined;
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  // Relax TLS in production or when explicitly requested to avoid self-signed cert failures.
-  ssl: shouldRelaxTls ? { rejectUnauthorized: false } : undefined
+  connectionString,
+  ssl: { rejectUnauthorized: false }
 });
 
 const adapter = new PrismaPg(pool);
