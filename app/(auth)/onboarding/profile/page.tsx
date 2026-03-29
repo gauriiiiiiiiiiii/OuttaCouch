@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -94,12 +95,14 @@ export default function ProfileOnboardingPage() {
       <SectionCard title="Profile" description="Photo, name, bio, interests.">
         <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="flex items-center gap-4">
-            <div className="h-16 w-16 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
+            <div className="relative h-16 w-16 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
               {photoPreview ? (
-                <img
+                <Image
                   src={photoPreview}
                   alt="Profile preview"
-                  className="h-full w-full object-cover"
+                  fill
+                  sizes="64px"
+                  className="object-cover"
                 />
               ) : null}
             </div>

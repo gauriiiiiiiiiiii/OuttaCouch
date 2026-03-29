@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import Image from "next/image";
 
 type MemoryItem = {
   id: string;
@@ -29,10 +30,12 @@ export default function MemoriesGrid({ items }: { items: MemoryItem[] }) {
         >
           <div className="relative aspect-[4/3] bg-gradient-to-br from-sand to-white">
             {item.imageUrl ? (
-              <img
+              <Image
                 src={item.imageUrl}
                 alt={item.title}
-                className="h-full w-full object-cover"
+                fill
+                sizes="(min-width:1280px) 33vw, (min-width:768px) 50vw, 100vw"
+                className="object-cover"
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-xs uppercase tracking-[0.3em] text-neutral-400">

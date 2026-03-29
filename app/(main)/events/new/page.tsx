@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -377,11 +378,15 @@ export default function CreateEventPage() {
                   <p className="text-xs text-neutral-500">Uploading...</p>
                 ) : null}
                 {imagePreview ? (
-                  <img
-                    src={imagePreview}
-                    alt="Cover preview"
-                    className="h-48 w-full rounded-xl border border-neutral-200 object-cover"
-                  />
+                  <div className="relative h-48 w-full overflow-hidden rounded-xl border border-neutral-200">
+                    <Image
+                      src={imagePreview}
+                      alt="Cover preview"
+                      fill
+                      sizes="(min-width:768px) 50vw, 100vw"
+                      className="object-cover"
+                    />
+                  </div>
                 ) : null}
               </div>
             </SectionCard>

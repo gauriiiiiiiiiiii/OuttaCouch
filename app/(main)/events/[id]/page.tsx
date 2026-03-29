@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -212,11 +213,15 @@ export default function EventDetailPage() {
       ) : (
         <div className="space-y-6">
           <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white/90">
-            <img
-              src={event.coverImageUrl}
-              alt={event.title}
-              className="h-64 w-full object-cover"
-            />
+            <div className="relative h-64 w-full">
+              <Image
+                src={event.coverImageUrl}
+                alt={event.title}
+                fill
+                sizes="(min-width:1024px) 66vw, 100vw"
+                className="object-cover"
+              />
+            </div>
           </div>
           <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
             <div className="space-y-6">
@@ -269,11 +274,15 @@ export default function EventDetailPage() {
                         key={image.id}
                         className="overflow-hidden rounded-xl border border-neutral-200"
                       >
-                        <img
-                          src={image.imageUrl}
-                          alt={event.title}
-                          className="h-40 w-full object-cover"
-                        />
+                        <div className="relative h-40 w-full">
+                          <Image
+                            src={image.imageUrl}
+                            alt={event.title}
+                            fill
+                            sizes="(min-width:1024px) 33vw, (min-width:640px) 50vw, 100vw"
+                            className="object-cover"
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -296,14 +305,16 @@ export default function EventDetailPage() {
                 <div className="mt-4 flex items-center gap-4">
                   <Link
                     href={`/users/${event.host.id}`}
-                    className="h-12 w-12 overflow-hidden rounded-full bg-neutral-200"
+                    className="relative h-12 w-12 overflow-hidden rounded-full bg-neutral-200"
                     aria-label={`View ${event.host.name}`}
                   >
                     {event.host.photo ? (
-                      <img
+                      <Image
                         src={event.host.photo}
                         alt={event.host.name}
-                        className="h-full w-full object-cover"
+                        fill
+                        sizes="48px"
+                        className="object-cover"
                       />
                     ) : null}
                   </Link>

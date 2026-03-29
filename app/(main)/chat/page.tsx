@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
@@ -88,15 +89,17 @@ export default function ChatListPage() {
                         event.stopPropagation();
                         navigateToProfile(router, connection.userId);
                       }}
-                      className="h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
+                      className="relative h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
                       aria-label={`View ${connection.name}`}
                     >
                       {connection.photo ? (
-                        <img
-                          src={connection.photo}
-                          alt={connection.name}
-                          className="h-full w-full rounded-full object-cover"
-                        />
+                          <Image
+                            src={connection.photo}
+                            alt={connection.name}
+                            fill
+                            sizes="48px"
+                            className="rounded-full object-cover"
+                          />
                       ) : null}
                     </button>
                     <div className="text-xs font-semibold text-neutral-800">
@@ -148,14 +151,16 @@ export default function ChatListPage() {
                     event.stopPropagation();
                     navigateToProfile(router, chat.userId);
                   }}
-                  className="h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
+                  className="relative h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
                   aria-label={`View ${chat.name}`}
                 >
                   {chat.photo ? (
-                    <img
+                    <Image
                       src={chat.photo}
                       alt={chat.name}
-                      className="h-full w-full rounded-full object-cover"
+                      fill
+                      sizes="48px"
+                      className="rounded-full object-cover"
                     />
                   ) : null}
                 </button>

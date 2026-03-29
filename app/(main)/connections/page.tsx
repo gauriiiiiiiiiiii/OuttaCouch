@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
@@ -129,14 +130,16 @@ export default function ConnectionsPage() {
                     <button
                       type="button"
                       onClick={() => navigateToProfile(router, connection.userId)}
-                      className="h-12 w-12 rounded-full bg-neutral-200 flex-shrink-0 overflow-hidden"
+                      className="relative h-12 w-12 rounded-full bg-neutral-200 flex-shrink-0 overflow-hidden"
                       aria-label={`View ${connection.name}`}
                     >
                       {connection.photo ? (
-                        <img
+                        <Image
                           src={connection.photo}
                           alt={connection.name}
-                          className="h-full w-full rounded-full object-cover"
+                          fill
+                          sizes="48px"
+                          className="rounded-full object-cover"
                         />
                       ) : null}
                     </button>
@@ -177,14 +180,16 @@ export default function ConnectionsPage() {
                       <button
                         type="button"
                         onClick={() => navigateToProfile(router, request.userId)}
-                        className="h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
+                        className="relative h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
                         aria-label={`View ${request.name}`}
                       >
                         {request.photo ? (
-                          <img
+                          <Image
                             src={request.photo}
                             alt={request.name}
-                            className="h-full w-full rounded-full object-cover"
+                            fill
+                            sizes="48px"
+                            className="rounded-full object-cover"
                           />
                         ) : null}
                       </button>
@@ -238,14 +243,16 @@ export default function ConnectionsPage() {
                       <button
                         type="button"
                         onClick={() => navigateToProfile(router, suggestion.userId)}
-                        className="h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
+                        className="relative h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
                         aria-label={`View ${suggestion.name}`}
                       >
                         {suggestion.photo ? (
-                          <img
+                          <Image
                             src={suggestion.photo}
                             alt={suggestion.name}
-                            className="h-full w-full rounded-full object-cover"
+                            fill
+                            sizes="48px"
+                            className="rounded-full object-cover"
                           />
                         ) : null}
                       </button>

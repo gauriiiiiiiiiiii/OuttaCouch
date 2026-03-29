@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 interface ReferrerInfo {
@@ -115,11 +116,15 @@ function JoinContent() {
         <div className="text-center mb-8">
           <div className="mb-6">
             {referrerInfo.fromUser.profilePhotoUrl ? (
-              <img
-                src={referrerInfo.fromUser.profilePhotoUrl}
-                alt={referrerInfo.fromUser.displayName}
-                className="w-20 h-20 rounded-full mx-auto border-4 border-purple-500 object-cover"
-              />
+              <div className="relative mx-auto h-20 w-20 overflow-hidden rounded-full border-4 border-purple-500">
+                <Image
+                  src={referrerInfo.fromUser.profilePhotoUrl}
+                  alt={referrerInfo.fromUser.displayName}
+                  fill
+                  sizes="80px"
+                  className="object-cover"
+                />
+              </div>
             ) : (
               <div className="w-20 h-20 rounded-full mx-auto bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold">
                 {referrerInfo.fromUser.displayName.charAt(0).toUpperCase()}

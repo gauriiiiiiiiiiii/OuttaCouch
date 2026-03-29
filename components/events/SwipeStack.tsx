@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { motion, useMotionValue, useTransform } from "framer-motion";
 import type { EventSummary } from "@/types";
 
@@ -117,11 +118,13 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
           }}
         >
           {current.imageUrl ? (
-            <div className="relative">
-              <img
+            <div className="relative h-60 w-full">
+              <Image
                 src={current.imageUrl}
                 alt={current.title}
-                className="h-60 w-full object-cover"
+                fill
+                sizes="(min-width:1024px) 40vw, 100vw"
+                className="object-cover"
               />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-4 py-3">
                 <div className="text-xs uppercase tracking-[0.2em] text-white/80">

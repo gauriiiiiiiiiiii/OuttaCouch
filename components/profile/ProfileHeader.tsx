@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 type ProfileHeaderProps = {
   name: string;
   bio?: string | null;
@@ -24,9 +26,9 @@ export default function ProfileHeader({
       <div className="absolute inset-0 bg-gradient-to-br from-white via-white/60 to-transparent" />
       <div className="relative flex flex-wrap items-start justify-between gap-6">
         <div className="flex items-center gap-4">
-          <div className="h-20 w-20 overflow-hidden rounded-2xl border border-white/70 bg-neutral-200 shadow-sm">
+          <div className="relative h-20 w-20 overflow-hidden rounded-2xl border border-white/70 bg-neutral-200 shadow-sm">
             {photo ? (
-              <img src={photo} alt={name} className="h-full w-full object-cover" />
+              <Image src={photo} alt={name} fill sizes="80px" className="object-cover" />
             ) : null}
           </div>
           <div className="space-y-1">

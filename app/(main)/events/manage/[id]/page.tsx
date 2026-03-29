@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import PageShell from "@/components/ui/PageShell";
@@ -71,19 +72,19 @@ export default function HostDashboardPage() {
     };
   }, [id]);
 
-  const loadImages = async () => {
+  const loadImages = useCallback(async () => {
     const res = await fetch(`/api/events/${id}/images`);
     const data = res.ok
       ? ((await res.json()) as { images: EventImage[] })
       : { images: [] };
     setImages(data.images ?? []);
-  };
+  }, [id]);
 
   useEffect(() => {
     if (id) {
       loadImages();
     }
-  }, [id]);
+  }, [id, loadImages]);
 
   const handleGalleryUpload = async (files?: FileList | null) => {
     if (!files || files.length === 0) {
@@ -325,11 +326,15 @@ export default function HostDashboardPage() {
                     key={image.id}
                     className="overflow-hidden rounded-xl border border-neutral-200 bg-white/95"
                   >
-                    <img
-                      src={image.imageUrl}
-                      alt={event.title}
-                      className="h-40 w-full object-cover"
-                    />
+                    <div className="relative h-40 w-full">
+                      <Image
+                        src={image.imageUrl}
+                        alt={event.title}
+                        fill
+                        sizes="(min-width:1024px) 33vw, (min-width:640px) 50vw, 100vw"
+                        className="object-cover"
+                      />
+                    </div>
                     <div className="flex flex-wrap items-center gap-2 p-3 text-xs">
                       <button
                         className="rounded-full border border-neutral-300 px-3 py-1 font-semibold"

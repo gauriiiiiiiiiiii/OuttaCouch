@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
@@ -146,11 +147,15 @@ export default function EditProfilePage() {
                 <p className="text-xs text-neutral-500">Uploading...</p>
               ) : null}
               {photoPreview ? (
-                <img
-                  src={photoPreview}
-                  alt="Profile preview"
-                  className="h-24 w-24 rounded-full border border-neutral-200 object-cover"
-                />
+                <div className="relative h-24 w-24 overflow-hidden rounded-full border border-neutral-200">
+                  <Image
+                    src={photoPreview}
+                    alt="Profile preview"
+                    fill
+                    sizes="96px"
+                    className="object-cover"
+                  />
+                </div>
               ) : null}
             </div>
             <div>

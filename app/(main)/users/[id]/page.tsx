@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
 import CalendarGrid from "@/components/profile/CalendarGrid";
@@ -151,14 +152,16 @@ export default function PublicProfilePage() {
               <button
                 type="button"
                 onClick={() => navigateToProfile(router, profile.user.id)}
-                className="h-20 w-20 overflow-hidden rounded-full bg-neutral-200"
+                className="relative h-20 w-20 overflow-hidden rounded-full bg-neutral-200"
                 aria-label={`View ${profile.user.displayName ?? "User"}`}
               >
                 {profile.user.profilePhotoUrl ? (
-                  <img
+                  <Image
                     src={profile.user.profilePhotoUrl}
                     alt={profile.user.displayName ?? "User"}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="80px"
+                    className="object-cover"
                   />
                 ) : null}
               </button>
@@ -241,12 +244,14 @@ export default function PublicProfilePage() {
                     onClick={() => router.push(`/events/${event.id}`)}
                     className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white/95 p-4 text-left transition hover:-translate-y-0.5 hover:border-neutral-300"
                   >
-                    <div className="h-14 w-14 overflow-hidden rounded-xl bg-neutral-200">
+                    <div className="relative h-14 w-14 overflow-hidden rounded-xl bg-neutral-200">
                       {event.imageUrl ? (
-                        <img
+                        <Image
                           src={event.imageUrl}
                           alt={event.title}
-                          className="h-full w-full object-cover"
+                          fill
+                          sizes="56px"
+                          className="object-cover"
                         />
                       ) : null}
                     </div>
@@ -308,11 +313,13 @@ export default function PublicProfilePage() {
                     href={`/events/${event.id}`}
                     className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white/95 transition hover:-translate-y-0.5 hover:border-neutral-300"
                   >
-                    <div className="h-32 w-full bg-neutral-200">
-                      <img
+                    <div className="relative h-32 w-full bg-neutral-200">
+                      <Image
                         src={event.coverImageUrl}
                         alt={event.title}
-                        className="h-full w-full object-cover"
+                        fill
+                        sizes="(min-width:1024px) 33vw, (min-width:640px) 50vw, 100vw"
+                        className="object-cover"
                       />
                     </div>
                     <div className="p-4">

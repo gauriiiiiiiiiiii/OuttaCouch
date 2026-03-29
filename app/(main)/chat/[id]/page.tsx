@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
@@ -32,25 +32,25 @@ export default function ChatThreadPage() {
     return lastMessage?.id ?? null;
   }, [messages, userId]);
 
-  const loadMessages = async () => {
+  const loadMessages = useCallback(async () => {
     const res = await fetch(`/api/chat/${id}`);
     const data = res.ok ? ((await res.json()) as { messages: Message[] }) : { messages: [] };
     setMessages(data.messages ?? []);
-  };
+  }, [id]);
 
-  const markRead = async () => {
+  const markRead = useCallback(async () => {
     if (!id) {
       return;
     }
     await fetch(`/api/chat/${id}/read`, { method: "PUT" });
-  };
+  }, [id]);
 
   useEffect(() => {
     if (id) {
       loadMessages();
       markRead();
     }
-  }, [id]);
+  }, [id, loadMessages, markRead]);
 
   useEffect(() => {
     if (!id) {
@@ -78,7 +78,7 @@ export default function ChatThreadPage() {
     return () => {
       socket.disconnect();
     };
-  }, [id, userId]);
+  }, [id, userId, loadMessages, markRead]);
 
   useEffect(() => {
     const loadUser = async () => {
