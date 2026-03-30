@@ -28,23 +28,29 @@ async function twilioRequest(
   }
 
   const auth = Buffer.from(`${config.accountSid}:${config.authToken}`).toString("base64");
-  const response = await fetch(`https://verify.twilio.com/v2/Services/${config.serviceSid}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: body.toString()
-  });
-
-  const text = await response.text();
-  let json: Record<string, unknown> | undefined;
   try {
-    json = text ? (JSON.parse(text) as Record<string, unknown>) : undefined;
-  } catch {
-    json = undefined;
+    const response = await fetch(`https://verify.twilio.com/v2/Services/${config.serviceSid}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: body.toString()
+    });
+
+    const text = await response.text();
+    let json: Record<string, unknown> | undefined;
+    try {
+      json = text ? (JSON.parse(text) as Record<string, unknown>) : undefined;
+    } catch {
+      json = undefined;
+    }
+    return { ok: response.ok, text, json };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Twilio request failed";
+    console.error("Twilio Verify request failed", message);
+    return { ok: false, text: message };
   }
-  return { ok: response.ok, text, json };
 }
 
 export async function startVerification(to: string, channel: TwilioChannel) {

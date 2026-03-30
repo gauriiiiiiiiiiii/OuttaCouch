@@ -43,35 +43,59 @@ export async function POST(request: NextRequest) {
           if (!existingTicket) {
             const eventRecord = await prisma.event.findUnique({ where: { id: eventId } });
             if (eventRecord) {
-              const amountPaid = Number(intent.amount_received || intent.amount || 0) / 100;
-              const qrCode = crypto.randomUUID();
-              
-              const ticket = await prisma.ticket.create({
-                data: {
-                  eventId,
-                  userId,
-                  quantity,
-                  amountPaid,
-                  currency: intent.currency.toUpperCase(),
-                  paymentIntentId: intent.id,
-                  paymentStatus: "paid",
-                  qrCode
-                }
-              });
+              const expectedAmount = Math.round(Number(eventRecord.ticketPrice || 0) * quantity * 100);
+              if (
+                intent.amount !== expectedAmount ||
+                intent.currency.toUpperCase() !== eventRecord.currency.toUpperCase()
+              ) {
+                break;
+              }
 
-              await prisma.eventAttendee.create({
-                data: {
-                  eventId,
-                  userId,
-                  ticketId: ticket.id,
-                  status: "committed"
-                }
-              });
+              await prisma
+                .$transaction(async (tx) => {
+                  const fresh = await tx.event.findUnique({ where: { id: eventId } });
+                  if (!fresh) {
+                    throw new Error("EVENT_MISSING");
+                  }
 
-              await prisma.event.update({
-                where: { id: eventId },
-                data: { currentAttendees: { increment: quantity } }
-              });
+                  if (fresh.currentAttendees + quantity > fresh.maxAttendees) {
+                    throw new Error("EVENT_FULL");
+                  }
+
+                  const qrCode = crypto.randomUUID();
+                  const ticket = await tx.ticket.create({
+                    data: {
+                      eventId,
+                      userId,
+                      quantity,
+                      amountPaid: Number(intent.amount_received || intent.amount || 0) / 100,
+                      currency: intent.currency.toUpperCase(),
+                      paymentIntentId: intent.id,
+                      paymentStatus: "paid",
+                      qrCode
+                    }
+                  });
+
+                  await tx.eventAttendee.create({
+                    data: {
+                      eventId,
+                      userId,
+                      ticketId: ticket.id,
+                      status: "committed"
+                    }
+                  });
+
+                  await tx.event.update({
+                    where: { id: eventId },
+                    data: { currentAttendees: { increment: quantity } }
+                  });
+                })
+                .catch((err) => {
+                  if ((err as Error).message === "EVENT_FULL") {
+                    return;
+                  }
+                  throw err;
+                });
             }
           }
         }

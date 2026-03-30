@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { normalizeContact } from "@/lib/normalizeContact";
 import { checkVerification } from "@/lib/twilioVerify";
@@ -42,11 +43,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many attempts" }, { status: 429 });
   }
 
+  const usesTwilio = !!token.verificationSid;
+
+  if (!usesTwilio && !token.codeHash) {
+    return NextResponse.json({ error: "OTP not available" }, { status: 400 });
+  }
+
+  if (!usesTwilio) {
+    const isValid = await bcrypt.compare(otp, token.codeHash);
+    if (!isValid) {
+      const nextAttempts = token.attempts + 1;
+      await prisma.otpToken.update({
+        where: { id: token.id },
+        data: {
+          attempts: nextAttempts,
+          usedAt: nextAttempts >= maxAttempts ? new Date() : undefined
+        }
+      });
+      return NextResponse.json({ error: "Invalid OTP" }, { status: 400 });
+    }
+
+    const verified = await prisma.otpToken.update({
+      where: { id: token.id },
+      data: { verifiedAt: new Date() }
+    });
+
+    return NextResponse.json({ status: "verified", token: verified.id });
+  }
+
   const verifyResult = await checkVerification(contact, otp);
   if (verifyResult.status === "skipped") {
     return NextResponse.json(
       { error: verifyResult.error || "Twilio Verify not configured" },
-      { status: 500 }
+      { status: 503 }
     );
   }
 

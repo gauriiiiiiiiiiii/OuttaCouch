@@ -11,6 +11,9 @@ type ProfileHeaderProps = {
     connections: number;
   };
   onSettingsClick?: () => void;
+  onAttendedClick?: () => void;
+  onHostedClick?: () => void;
+  onConnectionsClick?: () => void;
 };
 
 export default function ProfileHeader({
@@ -19,7 +22,10 @@ export default function ProfileHeader({
   city,
   photo,
   stats,
-  onSettingsClick
+  onSettingsClick,
+  onAttendedClick,
+  onHostedClick,
+  onConnectionsClick
 }: ProfileHeaderProps) {
   return (
     <div className="relative overflow-hidden rounded-3xl border border-neutral-200 bg-white/90 p-6 shadow-sm">
@@ -48,19 +54,21 @@ export default function ProfileHeader({
       </div>
       <div className="relative mt-6 grid gap-3 md:grid-cols-3">
         {[
-          { label: "Attended", value: stats.eventsAttended },
-          { label: "Hosted", value: stats.eventsHosted },
-          { label: "Connections", value: stats.connections }
+          { label: "Attended", value: stats.eventsAttended, onClick: onAttendedClick },
+          { label: "Hosted", value: stats.eventsHosted, onClick: onHostedClick },
+          { label: "Connections", value: stats.connections, onClick: onConnectionsClick }
         ].map((item) => (
-          <div
+          <button
             key={item.label}
-            className="rounded-2xl border border-neutral-200/80 bg-white/95 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
+            type="button"
+            onClick={item.onClick}
+            className="text-left rounded-2xl border border-neutral-200/80 bg-white/95 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
           >
             <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
               {item.label}
             </p>
             <p className="mt-2 text-2xl font-semibold text-ink">{item.value}</p>
-          </div>
+          </button>
         ))}
       </div>
     </div>

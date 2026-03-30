@@ -82,12 +82,7 @@ export default function ExplorePage() {
   const baseEvents = events.length > 0 ? events : dummyEvents;
   const filteredEvents = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
-    let filtered = baseEvents;
-    
-    // Filter out hidden events
-    filtered = filtered.filter((event) => !hiddenEvents.has(event.id));
-    
-    // Apply search query
+    let filtered = baseEvents.filter((event) => !hiddenEvents.has(event.id));
     if (trimmed) {
       filtered = filtered.filter((event) =>
         [event.title, event.category, event.location]
@@ -97,7 +92,7 @@ export default function ExplorePage() {
           .includes(trimmed)
       );
     }
-    
+
     return filtered;
   }, [baseEvents, query, hiddenEvents]);
 
@@ -106,22 +101,26 @@ export default function ExplorePage() {
     action: "left" | "right"
   ) => {
     if (event.id.startsWith("dummy")) {
+      if (action === "left") {
+        setHiddenEvents((prev) => new Set([...prev, event.id]));
+      }
+      if (action === "right") {
+        router.push(`/events/${event.id}`);
+      }
       return;
     }
 
-    // Log swipe action to database
     await fetch("/api/events/swipe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event_id: event.id, action })
     });
 
-    // Handle swipe actions
     if (action === "right") {
-      // Swipe right: Open event details for confirmation
-      router.push(`/events/${event.id}`);
-    } else if (action === "left") {
-      // Swipe left: Skip/hide event from feed
+      // Commit intent flows into event details for acceptance/payment
+      router.push(`/events/${event.id}#tickets`);
+    } else {
+      // Skip hides the event locally
       setHiddenEvents((prev) => new Set([...prev, event.id]));
     }
   };
@@ -147,7 +146,13 @@ export default function ExplorePage() {
               className="w-full rounded-full border border-neutral-200 px-4 py-2 text-sm"
               placeholder="Search events by name, category, or location"
             />
-            <SwipeStack events={filteredEvents} onSwipe={handleSwipe} />
+            {filteredEvents.length === 0 ? (
+              <div className="rounded-2xl border border-neutral-200 bg-white/80 p-6 text-center text-sm text-neutral-600">
+                No events found.
+              </div>
+            ) : (
+              <SwipeStack events={filteredEvents} onSwipe={handleSwipe} />
+            )}
           </div>
         )}
       </SectionCard>

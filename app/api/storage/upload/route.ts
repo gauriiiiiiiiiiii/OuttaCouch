@@ -1,9 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
   const bucket = formData.get("bucket");
@@ -13,8 +19,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Bucket required" }, { status: 400 });
   }
 
+  const allowedBuckets = ["event-images", "profile-photos", "memories"];
+  if (!allowedBuckets.includes(bucket)) {
+    return NextResponse.json({ error: "Invalid bucket" }, { status: 400 });
+  }
+
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: "File required" }, { status: 400 });
+  }
+
+  if (!file.type || !file.type.startsWith("image/")) {
+    return NextResponse.json({ error: "Images only" }, { status: 400 });
   }
 
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {

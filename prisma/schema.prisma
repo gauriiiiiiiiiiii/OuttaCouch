@@ -146,6 +146,7 @@ model OtpToken {
   user       User?     @relation(fields: [userId], references: [id])
 
   @@map("otp_tokens")
+  @@index([contact, purpose, usedAt])
 }
 
 model Event {

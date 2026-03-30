@@ -5,7 +5,7 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 - Motivation: Build meaningful connections by making events the primary unit and requiring attendance to unlock social graph features.
 
 2) High-Level Architecture
-- Frontend: Next.js 14 App Router with React 18 + TypeScript; pages split by route groups.
+- Frontend: Next.js 15 App Router with React 18 + TypeScript; pages split by route groups.
   - Public/auth flows: app/(auth)
   - Protected main app: app/(main)
 - Backend: Next.js API routes in app/api for auth, events, connections, chat, tickets, users, memories, notifications, storage, and webhooks.
@@ -54,10 +54,9 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 
 6) Core Features (Implementation Details)
 
-6.1 Authentication
 - OTP
-  - /api/auth/send-otp: generates 6-digit OTP, stores SHA-256 hash in otp_tokens with expiry.
-  - /api/auth/verify-otp: validates OTP, sets verifiedAt.
+  - /api/auth/send-otp: generates 6-digit OTP, emails via SMTP (gmail creds in .env) and stores bcrypt hash in otp_tokens; phone/WhatsApp OTP uses Twilio Verify.
+  - /api/auth/verify-otp: validates OTP; for email compares bcrypt hash, for phone/WhatsApp uses Twilio Verify; sets verifiedAt.
 - Register
   - /api/auth/register: validates OTP token, hashes password, creates user, marks OTP used.
 - Login
@@ -67,9 +66,8 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 - Middleware
   - middleware.ts: redirects unauthenticated to /login, forces onboarding until profileComplete.
 
-6.2 Events
 - Discovery
-  - /api/events GET: fetches top 50 events and scores using distance, preferences, recency, popularity, time proximity, and connections attending.
+  - /api/events GET: fetches top 50 events and scores using distance, preferences, recency, popularity, time proximity, and connections attending. Explore UI uses swipe-style cards with Skip/Commit; Skip hides, Commit opens event details.
 - Creation
   - /api/events POST: validates fields, creates event with schedule, venue, pricing, and cover image.
 - Details
@@ -96,10 +94,8 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 - Validate
   - /api/tickets/validate: host-only QR validation sets qrValidated + attendee status.
 
-6.4 Connections
 - Suggestions
-  - /api/connections/suggestions: shared event attendance + relevance fallback.
-  - Scoring uses shared count, recency, distance, preference overlap, mutual connections.
+  - /api/connections/suggestions: shared event attendance + relevance fallback; UI shows Skip/Commit. Skip removes suggestion; Commit sends request then opens profile details.
 - Find friends
   - /api/connections/discover?query= : search by name/email or fallback to preferences/city.
 - Requests
@@ -118,11 +114,9 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 - Realtime
   - pages/api/socketio.ts boots Socket.io server; lib/socketServer.ts emits to rooms.
 
-6.6 Profile and Visibility
-- /api/users/me GET: user profile + stats + attendedEvents.
+- /api/users/me GET: user profile + stats + calendar events (hosted + attended); connections loaded via /api/connections.
 - /api/users/me PUT: update profile fields and preferences.
 - /api/users/me/location PUT: save city/lat/lng.
-- /api/users/me/privacy PUT: set profileVisibility and calendarVisibility.
 - /api/users/:id GET: enforces privacy (private, connections-only, public).
 - /api/users/me DELETE: deactivates user and locks visibility.
 
@@ -135,25 +129,22 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 - /api/notifications/read-all PUT: mark unread as read.
 - /api/notifications/subscribe POST: records a subscription event.
 
-7) Detailed Working (Step-by-Step)
 - Auth flow
-  - OTP issued and hashed -> OTP verified -> account created -> NextAuth login.
+  - OTP issued (email via SMTP, phone via Twilio) -> OTP verified -> account created -> NextAuth login.
   - JWT includes profileComplete and isDeactivated; middleware checks on every protected route.
 - Explore flow
-  - Client fetches /api/events -> renders swipe deck or map.
-  - Swipe actions recorded in event_swipes.
+  - Client fetches /api/events -> swipe-style cards with Skip/Commit; both card tap and Commit open event details (tickets section). Swipe actions recorded in event_swipes.
 - Commit/ticket flow
-  - Free events -> commit route creates EventAttendee.
+  - Free events -> commit route creates EventAttendee and adds to calendar.
   - Paid events -> Stripe PaymentIntent -> confirm route creates Ticket + attendee.
   - Webhook ensures idempotent creation.
 - Connection flow
-  - Suggestions list from shared attendance or relevance fallback.
-  - Request -> accept creates Connection and first Message.
+  - Suggestions list with Skip/Commit; Commit sends request then opens profile; accept creates Connection and first Message.
 - Chat flow
-  - Chat list shows conversations with messages.
-  - Thread joins Socket.io room, receives realtime messages, sends typing and read signals.
+  - Chat list shows conversations with messages; thread joins Socket.io room, receives realtime messages, sends typing and read signals.
+- Profile hub
+  - Tabs for Calendar, Attended, Hosted, Connections. Calendar is unified (no public/private toggle); date click shows all events that day and links to details. Attended list links to event details. Hosted list offers View and Edit (manage/edit). Connections list links to profiles. Edit Profile opens /profile/edit.
 
-8) Algorithms and Logic (Code-Based)
 - Event ranking (api/events GET)
   - Score = location(0.30) + category(0.25) + time proximity(0.15) + connections attending(0.15) + popularity(0.10) + recency(0.05)
   - Distance uses exponential decay based on km.
@@ -206,7 +197,6 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 - Storage
   - POST /api/storage/upload (multipart) -> {publicUrl,path}
 
-10) Database Design (Prisma Schema)
 - User
   - email/phone unique, passwordHash, profile info, location, preferences, visibility, deactivation flags.
 - Event
@@ -243,9 +233,8 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 - Profile privacy enforced on /api/users/:id.
 - Deactivated users blocked in middleware.
 
-14) Security Considerations
 - Passwords hashed with bcryptjs.
-- OTP codes stored as SHA-256 hashes only.
+- OTP codes stored as bcrypt hashes (email) or verified by Twilio (phone/WhatsApp).
 - JWT-based session with minimal sensitive claims.
 - Stripe webhook signature verification.
 - Supabase admin key required for uploads.
@@ -285,3 +274,6 @@ OUTTACOUCH - Complete Technical Documentation (SDE Interview Ready)
 - prisma generate runs postinstall.
 - Ensure buckets exist and are public.
 - Run prisma migrate deploy in production if schema changes.
+- Clean build steps (Windows): stop dev server; delete .next/.turbo/node_modules\.cache if present; npm ci; npx prisma generate; npm run build; npm run start for smoke.
+- .next/types warnings after cache wipe are expected until you run dev/build.
+- Prod DB migrations: set DIRECT_URL in env (not prisma.config.ts) and run npx prisma migrate deploy on prod only.

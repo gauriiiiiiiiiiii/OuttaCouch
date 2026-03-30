@@ -11,7 +11,6 @@ export async function POST(
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
   const userId = token.sub;
 
   const event = await prisma.event.findUnique({ where: { id } });
@@ -31,23 +30,40 @@ export async function POST(
     return NextResponse.json({ status: "already-committed" });
   }
 
-  if (event.currentAttendees >= event.maxAttendees) {
-    return NextResponse.json({ error: "Event full" }, { status: 409 });
-  }
+  const committed = await prisma.$transaction(async (tx) => {
+    const fresh = await tx.event.findUnique({ where: { id: event.id } });
+    if (!fresh) {
+      throw new Error("EVENT_MISSING");
+    }
 
-  await prisma.$transaction([
-    prisma.eventAttendee.create({
+    if (fresh.currentAttendees >= fresh.maxAttendees) {
+      throw new Error("EVENT_FULL");
+    }
+
+    await tx.eventAttendee.create({
       data: {
-        eventId: event.id,
-        userId: token.sub,
+        eventId: fresh.id,
+        userId,
         status: "committed"
       }
-    }),
-    prisma.event.update({
-      where: { id: event.id },
+    });
+
+    await tx.event.update({
+      where: { id: fresh.id },
       data: { currentAttendees: { increment: 1 } }
-    })
-  ]);
+    });
+
+    return fresh.id;
+  }).catch((err) => {
+    if ((err as Error).message === "EVENT_FULL") {
+      return null;
+    }
+    throw err;
+  });
+
+  if (!committed) {
+    return NextResponse.json({ error: "Event full" }, { status: 409 });
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: token.sub },

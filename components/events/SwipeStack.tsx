@@ -98,7 +98,7 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
           className="absolute left-4 top-4 rounded-full border border-green-500 px-3 py-1 text-xs font-semibold text-green-600"
           style={{ opacity: likeOpacity }}
         >
-          DETAILS
+          COMMIT
         </motion.div>
         <motion.div
           className="absolute right-4 top-4 rounded-full border border-red-500 px-3 py-1 text-xs font-semibold text-red-600"
@@ -167,7 +167,7 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
           className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-parchment"
           onClick={() => handleSwipe("right")}
         >
-          View Details
+          Commit
         </button>
       </div>
     </div>

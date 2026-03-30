@@ -1,7 +1,9 @@
 import Stripe from "stripe";
 
-const stripeSecret = process.env.STRIPE_SECRET_KEY || "";
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error("STRIPE_SECRET_KEY required for Stripe initialization");
+}
 
-export const stripe = new Stripe(stripeSecret, {
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-06-20"
 });

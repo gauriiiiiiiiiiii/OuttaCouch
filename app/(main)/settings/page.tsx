@@ -41,7 +41,7 @@ export default function SettingsPage() {
     const res = await fetch("/api/users/me", { method: "DELETE" });
     setDeactivating(false);
     if (res.ok) {
-      await signOut({ callbackUrl: "/login" });
+      await signOut({ callbackUrl: "/" });
     }
   };
 

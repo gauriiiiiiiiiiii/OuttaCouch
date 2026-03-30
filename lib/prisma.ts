@@ -2,20 +2,18 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { Pool } from "pg";
 
-// Force Node to accept self-signed certificates for database connections in hosted environments.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+const connectionString = process.env.DATABASE_URL;
+// Default to SSL on; allow explicit opt-out for local dev only, and an insecure flag for MITM/self-signed environments.
+const useSsl = process.env.DATABASE_SSL !== "false";
+const allowInsecure = process.env.DATABASE_SSL_INSECURE === "true";
 
-// Ensure sslmode=require is present and always relax cert verification for hosted DBs with self-signed chains.
-const rawDbUrl = process.env.DATABASE_URL;
-const connectionString = rawDbUrl
-  ? rawDbUrl.includes("sslmode=")
-    ? rawDbUrl
-    : `${rawDbUrl}${rawDbUrl.includes("?") ? "&" : "?"}sslmode=require&sslaccept=accept_invalid_certs`
+const ssl = useSsl
+  ? { rejectUnauthorized: !allowInsecure }
   : undefined;
 
 const pool = new Pool({
   connectionString,
-  ssl: { rejectUnauthorized: false }
+  ssl
 });
 
 const adapter = new PrismaPg(pool);

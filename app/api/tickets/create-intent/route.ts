@@ -28,8 +28,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Free event" }, { status: 400 });
   }
 
+  if (event.status === "cancelled") {
+    return NextResponse.json({ error: "Event cancelled" }, { status: 409 });
+  }
+
   const quantity = Math.max(1, Math.min(body.quantity || 1, 4));
   const total = Number(event.ticketPrice || 0) * quantity;
+
+  if (event.currentAttendees + quantity > event.maxAttendees) {
+    return NextResponse.json({ error: "Event full" }, { status: 409 });
+  }
 
   const amount = Math.round(total * 100);
   const paymentIntent = await stripe.paymentIntents.create({

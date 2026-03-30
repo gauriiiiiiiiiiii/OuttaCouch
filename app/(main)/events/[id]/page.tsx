@@ -328,7 +328,7 @@ export default function EventDetailPage() {
               </div>
             </div>
             <div className="space-y-4">
-              <div className="rounded-2xl border border-neutral-200 bg-white/95 p-6 shadow-sm">
+              <div id="tickets" className="rounded-2xl border border-neutral-200 bg-white/95 p-6 shadow-sm">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
                   Tickets
                 </h3>
@@ -346,14 +346,18 @@ export default function EventDetailPage() {
                       disabled={commitStatus === "committed" || commitStatus === "submitting"}
                       className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {commitStatus === "submitting" ? "Adding..." : commitStatus === "committed" ? "✓ Added" : "Attend event"}
+                      {commitStatus === "submitting"
+                        ? "Confirming..."
+                        : commitStatus === "committed"
+                          ? "✓ Confirmed"
+                          : "Accept"}
                     </button>
                   ) : (
                     <a
                       href={`/events/${event.id}/ticket`}
                       className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment"
                     >
-                      Get ticket
+                      Proceed to payment
                     </a>
                   )}
                   {commitStatus ? (

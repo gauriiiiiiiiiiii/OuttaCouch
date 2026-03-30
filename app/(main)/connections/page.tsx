@@ -77,7 +77,12 @@ export default function ConnectionsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sharedEventId: suggestion.sharedEventId ?? null })
     });
-    setSuggestions((prev) => prev.filter((item) => item.userId !== suggestion.userId));
+    // After commit intent, navigate to profile details for context
+    navigateToProfile(router, suggestion.userId);
+  };
+
+  const handleSkip = (userId: string) => {
+    setSuggestions((prev) => prev.filter((item) => item.userId !== userId));
   };
 
 
@@ -239,13 +244,13 @@ export default function ConnectionsPage() {
                     key={suggestion.userId}
                     className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-neutral-200 bg-white/95 p-4"
                   >
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => navigateToProfile(router, suggestion.userId)}
-                        className="relative h-12 w-12 rounded-full bg-neutral-200 overflow-hidden"
-                        aria-label={`View ${suggestion.name}`}
-                      >
+                    <button
+                      type="button"
+                      onClick={() => navigateToProfile(router, suggestion.userId)}
+                      className="flex flex-1 items-center gap-3 text-left"
+                      aria-label={`View ${suggestion.name}`}
+                    >
+                      <div className="relative h-12 w-12 rounded-full bg-neutral-200 overflow-hidden flex-shrink-0">
                         {suggestion.photo ? (
                           <Image
                             src={suggestion.photo}
@@ -255,7 +260,7 @@ export default function ConnectionsPage() {
                             className="rounded-full object-cover"
                           />
                         ) : null}
-                      </button>
+                      </div>
                       <div>
                         <p className="text-sm font-semibold">{suggestion.name}</p>
                         <p className="text-xs text-neutral-500">
@@ -264,14 +269,23 @@ export default function ConnectionsPage() {
                             : "Suggested for you"}
                         </p>
                       </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleConnect(suggestion)}
-                      className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-parchment"
-                    >
-                      Connect
                     </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSkip(suggestion.userId)}
+                        className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleConnect(suggestion)}
+                        className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-parchment"
+                      >
+                        Commit
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

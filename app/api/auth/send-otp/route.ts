@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { normalizeContact } from "@/lib/normalizeContact";
+import { sendEmail } from "@/lib/sendEmail";
 import { startVerification } from "@/lib/twilioVerify";
 import { prisma } from "@/lib/prisma";
 
@@ -11,6 +13,10 @@ type SendOtpBody = {
 
 const otpLifetimeMs = 5 * 60 * 1000;
 const resendCooldownMs = 30 * 1000;
+
+function generateOtpCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 export async function POST(request: Request) {
   const body = (await request.json()) as SendOtpBody;
@@ -46,24 +52,34 @@ export async function POST(request: Request) {
   }
 
   if (type === "email") {
-    const emailResult = await startVerification(contact, "email");
+    const code = generateOtpCode();
+    const emailResult = await sendEmail({
+      to: contact,
+      subject: "Your OuttaCouch verification code",
+      text: `Your verification code is ${code}. It expires in 5 minutes.`
+    });
+
     if (emailResult.status === "skipped") {
       return NextResponse.json(
-        { error: emailResult.error || "Twilio Verify not configured" },
-        { status: 500 }
+        { error: "Email not configured" },
+        { status: 503 }
       );
     }
+
     if (emailResult.status === "failed") {
-      return NextResponse.json({ error: "Failed to send OTP" }, { status: 502 });
+      return NextResponse.json(
+        { error: emailResult.error || "Failed to send OTP" },
+        { status: 502 }
+      );
     }
 
     try {
+      const codeHash = await bcrypt.hash(code, 10);
       await prisma.otpToken.create({
         data: {
           contact,
-          codeHash: "",
+          codeHash,
           purpose,
-          verificationSid: emailResult.sid ?? undefined,
           expiresAt: new Date(Date.now() + otpLifetimeMs)
         }
       });
@@ -121,7 +137,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: "sent" });
     }
 
-    const errorMessage = smsResult.error || whatsappResult.error || "Failed to send OTP";
+    const errorMessage =
+      smsResult.error ||
+      whatsappResult.error ||
+      (smsResult.status === "skipped" || whatsappResult.status === "skipped"
+        ? "Twilio Verify not configured"
+        : "Failed to send OTP");
+
+    console.error("Twilio phone/whatsapp verification failed", errorMessage);
     return NextResponse.json({ error: errorMessage }, { status: 502 });
   }
 
