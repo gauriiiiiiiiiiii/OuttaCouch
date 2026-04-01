@@ -290,27 +290,70 @@ Observability:
 - Add moderation and admin tooling for events and users.
 - Add analytics pipeline for ranking tuning.
 
-14) Interview Questions and Strong Answers (20)
-1. Why choose Next.js App Router? -> Unified full-stack routing, SSR/CSR flexibility, and easy API colocation.
-2. How do you prevent duplicate ticket creation? -> PaymentIntent id checks and transactional creation in webhook/confirm flows.
-3. How do you ensure event capacity is respected? -> Transactional read of currentAttendees and conditional updates; return 409 on full.
-4. How do you secure OTP flows? -> Hash email OTPs, Twilio Verify for phone, expire tokens, enforce resend cooldown.
-5. How do you model connections? -> Connection table linking user1Id/user2Id with status and timestamps.
-6. How is chat authorization enforced? -> Only connection members can read or send messages.
-7. Why use Stripe webhooks? -> Source of truth for payment completion and idempotent ticket creation.
-8. How do you handle event discovery relevance? -> Scoring combining distance, preferences, time, popularity, connections.
-9. What are the trade-offs of a monolith? -> Faster iteration but requires extra work for scaling realtime and separating services.
-10. How do you scale Socket.io? -> Use a Redis adapter and sticky sessions or a dedicated realtime tier.
-11. How do you handle image uploads securely? -> Server-side multipart to Supabase Admin with bucket allowlist.
-12. How do you enforce onboarding? -> Middleware checks profileComplete and redirects.
-13. What prevents access by deactivated users? -> JWT flag plus middleware redirects and auth checks.
-14. How do you ensure notification delivery? -> Schedule table + dispatch job with secret header.
-15. How do you optimize DB queries? -> Limit result sets, select only required fields, use indexes.
-16. How are refunds handled? -> Validate ownership, refund window, and Stripe charge before updates.
-17. How would you add caching? -> Cache event feed and suggestions in Redis with short TTLs.
-18. How do you ensure data privacy? -> Profile visibility checks on /api/users/:id.
-19. How do you prevent race conditions? -> Transactions around capacity checks and ticket creation.
-20. How would you test webhooks? -> Use Stripe CLI and verify idempotency with repeated events.
+14) Interview Questions and Strong Answers 
 
-15) Elevator Pitch (30 seconds)
+
+1. Why choose Next.js App Router? 
+-> Unified full-stack routing, SSR/CSR flexibility, and easy API colocation.
+
+2. How do you prevent duplicate ticket creation? 
+-> PaymentIntent id checks and transactional creation in webhook/confirm flows.
+
+3. How do you ensure event capacity is respected? 
+-> Transactional read of currentAttendees and conditional updates; return 409 on full.
+
+4. How do you secure OTP flows? 
+-> Hash email OTPs, Twilio Verify for phone, expire tokens, enforce resend cooldown.
+
+5. How do you model connections? 
+-> Connection table linking user1Id/user2Id with status and timestamps.
+
+6. How is chat authorization enforced? 
+-> Only connection members can read or send messages.
+
+7. Why use Stripe webhooks? 
+-> Source of truth for payment completion and idempotent ticket creation.
+
+8. How do you handle event discovery relevance? 
+-> Scoring combining distance, preferences, time, popularity, connections.
+
+9. What are the trade-offs of a monolith? 
+-> Faster iteration but requires extra work for scaling realtime and separating services.
+
+10. How do you scale Socket.io? 
+-> Use a Redis adapter and sticky sessions or a dedicated realtime tier.
+
+11. How do you handle image uploads securely? 
+-> Server-side multipart to Supabase Admin with bucket allowlist.
+
+12. How do you enforce onboarding? 
+-> Middleware checks profileComplete and redirects.
+
+13. What prevents access by deactivated users? 
+-> JWT flag plus middleware redirects and auth checks.
+
+14. How do you ensure notification delivery? 
+-> Schedule table + dispatch job with secret header.
+
+15. How do you optimize DB queries? 
+-> Limit result sets, select only required fields, use indexes.
+
+16. How are refunds handled? 
+-> Validate ownership, refund window, and Stripe charge before updates.
+
+17. How would you add caching? 
+-> Cache event feed and suggestions in Redis with short TTLs.
+
+18. How do you ensure data privacy? 
+-> Profile visibility checks on /api/users/:id.
+
+19. How do you prevent race conditions? 
+-> Transactions around capacity checks and ticket creation.
+
+20. How would you test webhooks? 
+-> Use Stripe CLI and verify idempotency with repeated events.
+
+15) Elevator Pitch 
 OUTTACOUCH is an event-first social platform that uses real attendance to drive connections. Users discover nearby events, commit to attend, and automatically connect with people they meet. The system is built on Next.js with Prisma and PostgreSQL, Stripe for payments, Supabase for media, and Socket.io for realtime chat. The focus is on relevance, safety, and high-quality social interactions grounded in real-world experiences.
+
+
