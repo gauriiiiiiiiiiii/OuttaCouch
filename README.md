@@ -1,4 +1,4 @@
-# OuttaCouch Web
+# OuttaCouch 
 
 Next.js 15 App Router app for event-first social connections. Uses Prisma + Postgres (Supabase), Stripe for payments, Twilio Verify for phone OTP, and SMTP for email OTP.
 
