@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { format } from "date-fns";
 import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
+import { isSameOrigin } from "@/lib/csrf";
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,10 +14,20 @@ export async function GET(request: NextRequest) {
         })
       : null;
 
-    const events = await prisma.event.findMany({
-      orderBy: { eventDate: "asc" },
-      take: 50
-    });
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+    const pageSize = 50;
+    const skip = (page - 1) * pageSize;
+
+    const [events, totalCount] = await Promise.all([
+      prisma.event.findMany({
+        where: { visibility: "public" },
+        orderBy: { eventDate: "asc" },
+        take: pageSize,
+        skip
+      }),
+      prisma.event.count({ where: { visibility: "public" } })
+    ]);
 
     type EventRow = (typeof events)[number];
     const eventIds = events.map((event: EventRow) => event.id);
@@ -110,7 +121,12 @@ export async function GET(request: NextRequest) {
 
     scored.sort((a: (typeof scored)[number], b: (typeof scored)[number]) => b.score - a.score);
 
-    return NextResponse.json({ events: scored });
+    return NextResponse.json({
+      events: scored,
+      page,
+      hasMore: skip + events.length < totalCount,
+      totalCount
+    });
   } catch (error) {
     console.error("Events feed error", error);
     return NextResponse.json({ events: [] });
@@ -137,6 +153,10 @@ type CreateEventBody = {
 };
 
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

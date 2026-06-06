@@ -4,6 +4,8 @@ import { normalizeContact } from "@/lib/normalizeContact";
 import { sendEmail } from "@/lib/sendEmail";
 import { startVerification } from "@/lib/twilioVerify";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
+import { isSameOrigin } from "@/lib/csrf";
 
 type SendOtpBody = {
   contact: string;
@@ -19,6 +21,24 @@ function generateOtpCode() {
 }
 
 export async function POST(request: Request) {
+  // CSRF: reject cross-origin browser requests
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Rate limit: 5 OTP sends per IP per 15 minutes
+  const ip = getClientIp(request);
+  const rl = rateLimit(`send-otp:${ip}`, 5, 15 * 60 * 1000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) }
+      }
+    );
+  }
+
   const body = (await request.json()) as SendOtpBody;
   const rawContact = body.contact?.trim() || "";
   const isEmail = rawContact.includes("@");

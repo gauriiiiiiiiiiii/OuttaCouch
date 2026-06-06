@@ -16,7 +16,14 @@ export async function GET(request: NextRequest) {
     include: {
       user1: true,
       user2: true,
-      messages: { orderBy: { sentAt: "desc" }, take: 1 }
+      messages: { orderBy: { sentAt: "desc" }, take: 1 },
+      _count: {
+        select: {
+          messages: {
+            where: { readAt: null, senderId: { not: token.sub } }
+          }
+        }
+      }
     }
   });
 
@@ -36,6 +43,7 @@ export async function GET(request: NextRequest) {
         photo: other.profilePhotoUrl,
         lastMessage: lastMessage?.content ?? "",
         lastAt: lastMessage?.sentAt ?? null,
+        unreadCount: connection._count.messages,
         sortAt: lastMessage?.sentAt ? lastMessage.sentAt.getTime() : 0
       };
     })

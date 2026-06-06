@@ -1,11 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PageShell from "@/components/ui/PageShell";
 
 export default function PrivacySettingsPage() {
   const [profileVisibility, setProfileVisibility] = useState("public");
   const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      const res = await fetch("/api/users/me");
+      if (!res.ok || !active) { setLoading(false); return; }
+      const data = (await res.json()) as { user?: { profileVisibility?: string } };
+      if (active) {
+        setProfileVisibility(data.user?.profileVisibility ?? "public");
+        setLoading(false);
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, []);
 
   const save = async () => {
     setStatus(null);
@@ -38,14 +54,16 @@ export default function PrivacySettingsPage() {
               className="mt-3 w-full rounded-2xl border border-neutral-200 bg-white/95 px-4 py-3 text-sm shadow-sm"
               value={profileVisibility}
               onChange={(event) => setProfileVisibility(event.target.value)}
+              disabled={loading}
             >
               <option value="connections">Connections only</option>
               <option value="public">Public</option>
             </select>
           </div>
           <button
-            className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment transition hover:opacity-90"
+            className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment transition hover:opacity-90 disabled:opacity-50"
             onClick={save}
+            disabled={loading}
           >
             Save privacy
           </button>

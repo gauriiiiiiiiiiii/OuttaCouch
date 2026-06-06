@@ -219,23 +219,20 @@ export default function CalendarGrid({
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-7 gap-2 text-xs text-neutral-500">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-            <div key={day} className="text-center font-medium">
-              {day}
-            </div>
-          ))}
-        </div>
         <div className="mt-4 rounded-2xl border border-neutral-200 bg-white/95 p-4">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-              {format(month, "MMMM yyyy")}
-            </p>
             {isSameMonth(month, now) ? (
               <span className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500">
                 Current
               </span>
-            ) : null}
+            ) : <span />}
+          </div>
+          <div className="mb-2 grid grid-cols-7 gap-2 text-xs text-neutral-500">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <div key={day} className="text-center font-medium">
+                {day}
+              </div>
+            ))}
           </div>
           <div className="grid grid-cols-7 gap-2">
             {days.map((day) => {

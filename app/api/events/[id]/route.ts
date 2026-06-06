@@ -4,10 +4,12 @@ import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+
   const event = await prisma.event.findUnique({
     where: { id },
     include: {
@@ -85,6 +87,13 @@ export async function GET(
       photo: event.host.profilePhotoUrl
     },
     attendeeCount: event._count.attendees,
+    isCommitted: token?.sub
+      ? event.attendees.some((a) => a.userId === token.sub)
+      : false,
+    goingList: event.attendees.slice(0, 10).map((a) => ({
+      name: a.user.displayName ?? a.user.email ?? "Guest",
+      photo: a.user.profilePhotoUrl
+    })),
     attendees: event.attendees.map((attendee: (typeof event.attendees)[number]) => ({
       id: attendee.id,
       name: attendee.user.displayName ?? attendee.user.email ?? "User",
@@ -213,6 +222,7 @@ export async function DELETE(
       where: { eventId: event.id },
       data: { eventId: null }
     }),
+    prisma.notificationSchedule.deleteMany({ where: { eventId: event.id } }),
     prisma.eventSwipe.deleteMany({ where: { eventId: event.id } }),
     prisma.eventImage.deleteMany({ where: { eventId: event.id } }),
     prisma.eventAttendee.deleteMany({ where: { eventId: event.id } }),

@@ -53,6 +53,7 @@ export default function HostDashboardPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -154,15 +155,10 @@ export default function HostDashboardPage() {
   };
 
   const handleDeleteEvent = async () => {
-    if (!event) {
-      return;
-    }
-    const confirmed = window.confirm("Delete this event? This cannot be undone.");
-    if (!confirmed) {
-      return;
-    }
+    if (!event) return;
     const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
     if (!res.ok) {
+      setDeleteConfirm(false);
       setActionStatus("Could not delete event.");
       return;
     }
@@ -213,13 +209,35 @@ export default function HostDashboardPage() {
                 >
                   Edit event
                 </Link>
-                <button
-                  type="button"
-                  onClick={handleDeleteEvent}
-                  className="rounded-full border border-red-300 px-4 py-2 text-xs font-semibold text-red-600"
-                >
-                  Delete event
-                </button>
+                {deleteConfirm ? (
+                  <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-xs">
+                    <span className="text-red-700 font-semibold">
+                      Delete event?{event.attendeeCount > 0 ? ` ${event.attendeeCount} attendee${event.attendeeCount !== 1 ? "s" : ""} will be affected.` : ""} This cannot be undone.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDeleteEvent}
+                      className="rounded-full bg-red-600 px-3 py-1 font-semibold text-white"
+                    >
+                      Yes, delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirm(false)}
+                      className="rounded-full border border-neutral-300 bg-white px-3 py-1 font-semibold text-neutral-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirm(true)}
+                    className="rounded-full border border-red-300 px-4 py-2 text-xs font-semibold text-red-600"
+                  >
+                    Delete event
+                  </button>
+                )}
                 <Link
                   href={`/events/manage/${event.id}/scanner`}
                   className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold"

@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { normalizeContact } from "@/lib/normalizeContact";
 import { checkVerification } from "@/lib/twilioVerify";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
+import { isSameOrigin } from "@/lib/csrf";
 
 type VerifyOtpBody = {
   contact: string;
@@ -13,6 +15,24 @@ type VerifyOtpBody = {
 const maxAttempts = 5;
 
 export async function POST(request: Request) {
+  // CSRF
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Rate limit: 15 attempts per IP per 15 minutes (per-contact limit is already in DB)
+  const ip = getClientIp(request);
+  const rl = rateLimit(`verify-otp:${ip}`, 15, 15 * 60 * 1000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) }
+      }
+    );
+  }
+
   const body = (await request.json()) as VerifyOtpBody;
   const contact = normalizeContact(body.contact);
   const otp = body.otp?.trim();

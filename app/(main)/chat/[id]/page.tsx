@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
@@ -23,6 +23,7 @@ export default function ChatThreadPage() {
   const [isTyping, setIsTyping] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const lastSentMessageId = useMemo(() => {
     if (!userId) {
@@ -61,7 +62,9 @@ export default function ChatThreadPage() {
     socketRef.current = socket;
     socket.emit("join", id);
     socket.on("message", (message: Message) => {
-      setMessages((prev) => [...prev, message]);
+      setMessages((prev) =>
+        prev.some((m) => m.id === message.id) ? prev : [...prev, message]
+      );
       if (userId && message.senderId !== userId) {
         markRead();
       }
@@ -89,22 +92,31 @@ export default function ChatThreadPage() {
     loadUser();
   }, []);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const sendMessage = async () => {
-    if (!content.trim()) {
-      return;
-    }
-    await fetch(`/api/chat/${id}`, {
+    if (!content.trim()) return;
+    const res = await fetch(`/api/chat/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content })
     });
     setContent("");
     if (socketRef.current && userId) {
-      socketRef.current.emit("typing", {
-        roomId: id,
-        userId,
-        isTyping: false
-      });
+      socketRef.current.emit("typing", { roomId: id, userId, isTyping: false });
+    }
+    // Append the returned message; socket may also deliver it — dedup by id in state setter
+    if (res.ok) {
+      const data = (await res.json()) as { message?: Message };
+      if (data.message) {
+        setMessages((prev) =>
+          prev.some((m) => m.id === data.message!.id)
+            ? prev
+            : [...prev, data.message!]
+        );
+      }
     }
   };
 
@@ -139,7 +151,7 @@ export default function ChatThreadPage() {
             Back to chats
           </Link>
         </div>
-        <div className="space-y-2 px-6 py-5">
+        <div className="h-96 overflow-y-auto px-6 py-5">
         <div className="space-y-2">
           {messages.length === 0 ? (
             <p className="text-sm text-neutral-600">No messages yet.</p>
@@ -189,6 +201,7 @@ export default function ChatThreadPage() {
         {isTyping ? (
           <p className="text-xs text-neutral-500">Typing...</p>
         ) : null}
+        <div ref={messagesEndRef} />
         </div>
         <div className="border-t border-neutral-200 bg-white/95 px-6 py-4">
           <div className="flex gap-2">
@@ -197,6 +210,12 @@ export default function ChatThreadPage() {
               placeholder="Type a message"
               value={content}
               onChange={(event) => handleTyping(event.target.value)}
+              onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  sendMessage();
+                }
+              }}
             />
             <button
               className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment"

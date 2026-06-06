@@ -33,8 +33,7 @@ type ProfileForm = {
 
 export default function ProfileOnboardingPage() {
   const router = useRouter();
-  const session = useSession();
-  const update = session?.update || (() => Promise.resolve());
+  useSession();
   const { register, handleSubmit, setValue } = useForm<ProfileForm>({
     defaultValues: { preferences: [], profilePhotoUrl: "" }
   });
@@ -74,10 +73,7 @@ export default function ProfileOnboardingPage() {
     const res = await fetch("/api/users/me", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...values,
-        profileComplete: true
-      })
+      body: JSON.stringify(values)
     });
 
     setLoading(false);
@@ -86,8 +82,7 @@ export default function ProfileOnboardingPage() {
       setError("Could not save profile.");
       return;
     }
-    await update({ profileComplete: true });
-    router.replace("/explore");
+    router.replace("/onboarding/location");
   };
 
   return (
@@ -150,7 +145,7 @@ export default function ProfileOnboardingPage() {
             disabled={loading}
             className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment"
           >
-            {loading ? "Saving..." : "Finish profile"}
+            {loading ? "Saving..." : "Next: set location"}
           </button>
         </form>
       </SectionCard>

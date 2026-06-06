@@ -18,7 +18,8 @@ export async function PUT(request: NextRequest) {
     data: {
       city: body.city ?? undefined,
       lat: body.lat ?? undefined,
-      lng: body.lng ?? undefined
+      lng: body.lng ?? undefined,
+      ...(body.profileComplete === true ? { profileComplete: true } : {})
     }
   });
 

@@ -31,6 +31,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
   }
 
+  if (ticket.qrValidated) {
+    return NextResponse.json({ error: "Ticket already validated" }, { status: 409 });
+  }
+
   await prisma.ticket.update({
     where: { id: ticket.id },
     data: { qrValidated: true, validatedAt: new Date() }

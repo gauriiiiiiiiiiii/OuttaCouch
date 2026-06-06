@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     eventDate: ticket.event.eventDate.toISOString(),
     quantity: ticket.quantity,
     amountPaid: ticket.amountPaid.toString(),
+    paymentStatus: ticket.paymentStatus,
     qrCode: ticket.qrCode
   }));
 

@@ -28,8 +28,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "File required" }, { status: 400 });
   }
 
-  if (!file.type || !file.type.startsWith("image/")) {
-    return NextResponse.json({ error: "Images only" }, { status: 400 });
+  // Size limit: 10 MB
+  const MAX_BYTES = 10 * 1024 * 1024;
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json({ error: "File too large (max 10 MB)" }, { status: 400 });
+  }
+
+  // Whitelist MIME types — rejects spoofed types like image/php
+  const allowedMimeTypes = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "image/heic",
+    "image/heif"
+  ]);
+  if (!allowedMimeTypes.has(file.type)) {
+    return NextResponse.json({ error: "Images only (jpeg, png, gif, webp, avif)" }, { status: 400 });
+  }
+
+  // Whitelist extensions — defense-in-depth against extension spoofing
+  const allowedExtensions = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "heic", "heif"]);
+  const extension = (file.name.split(".").pop() ?? "").toLowerCase();
+  if (!allowedExtensions.has(extension)) {
+    return NextResponse.json({ error: "Invalid file extension" }, { status: 400 });
   }
 
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -44,7 +67,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Supabase client unavailable" }, { status: 500 });
   }
 
-  const extension = file.name.split(".").pop() || "jpg";
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
   const filePath = folder && typeof folder === "string" ? `${folder}/${fileName}` : fileName;
   const buffer = Buffer.from(await file.arrayBuffer());

@@ -9,6 +9,7 @@ export default function NotificationBell() {
 
   useEffect(() => {
     let active = true;
+
     const load = async () => {
       const res = await fetch("/api/notifications");
       if (!res.ok || !active) return;
@@ -19,9 +20,13 @@ export default function NotificationBell() {
         setUnread(data.notifications.filter((n) => !n.readAt).length);
       }
     };
+
     load();
+    // Poll every 30 seconds so connection requests and other events appear without reload
+    const interval = setInterval(load, 30_000);
     return () => {
       active = false;
+      clearInterval(interval);
     };
   }, []);
 

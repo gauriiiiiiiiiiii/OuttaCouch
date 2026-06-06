@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
 
@@ -45,6 +45,17 @@ export default function NotificationsPage() {
     );
   };
 
+  const dismissOne = async (id: string, e: MouseEvent) => {
+    e.stopPropagation();
+    await fetch(`/api/notifications/${id}`, { method: "DELETE" });
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const clearAll = async () => {
+    await fetch("/api/notifications", { method: "DELETE" });
+    setNotifications([]);
+  };
+
   const handleClick = async (n: Notification) => {
     if (!n.readAt) await markOneRead(n.id);
     if (n.link) router.push(n.link);
@@ -67,16 +78,27 @@ export default function NotificationsPage() {
               {notifications.length} total notification{notifications.length !== 1 ? "s" : ""}
             </p>
           </div>
-          {unreadCount > 0 ? (
-            <button
-              type="button"
-              onClick={markAllRead}
-              disabled={marking}
-              className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold transition hover:border-neutral-400 disabled:opacity-50"
-            >
-              {marking ? "Marking..." : "Mark all read"}
-            </button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 ? (
+              <button
+                type="button"
+                onClick={markAllRead}
+                disabled={marking}
+                className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold transition hover:border-neutral-400 disabled:opacity-50"
+              >
+                {marking ? "Marking..." : "Mark all read"}
+              </button>
+            ) : null}
+            {notifications.length > 0 ? (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold text-neutral-500 transition hover:border-red-300 hover:text-red-600"
+              >
+                Clear all
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {loading ? (
@@ -111,9 +133,19 @@ export default function NotificationsPage() {
                       {new Date(n.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  {n.link ? (
-                    <span className="shrink-0 text-xs text-neutral-400">→</span>
-                  ) : null}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {n.link ? (
+                      <span className="text-xs text-neutral-400">→</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={(e) => dismissOne(n.id, e)}
+                      className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                      aria-label="Dismiss"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               </button>
             ))}

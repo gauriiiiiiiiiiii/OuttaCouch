@@ -114,3 +114,32 @@ export async function POST(
 
   return NextResponse.json({ status: "committed" });
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const attendee = await prisma.eventAttendee.findFirst({
+    where: { eventId: id, userId: token.sub }
+  });
+
+  if (!attendee) {
+    return NextResponse.json({ error: "Not committed" }, { status: 404 });
+  }
+
+  await prisma.$transaction([
+    prisma.eventAttendee.delete({ where: { id: attendee.id } }),
+    prisma.event.update({
+      where: { id },
+      data: { currentAttendees: { decrement: 1 } }
+    })
+  ]);
+
+  return NextResponse.json({ status: "cancelled" });
+}

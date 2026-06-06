@@ -16,3 +16,14 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ notifications });
 }
+
+export async function DELETE(request: NextRequest) {
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  await prisma.notification.deleteMany({ where: { userId: token.sub } });
+
+  return NextResponse.json({ status: "cleared" });
+}

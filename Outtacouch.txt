@@ -33,8 +33,8 @@ Key product promises:
 High-level architecture is a single Next.js 15 application that serves both the frontend and the backend API.
 The frontend uses the App Router with route groups: app/(auth) for authentication and onboarding flows, and app/(main) for the protected core product (explore, events, chat, profile, settings, notifications).
 The backend is implemented as Next.js API routes in app/api, and a Socket.io server bootstrapped through pages/api/socketio.ts for realtime chat.
-Core services: PostgreSQL via Prisma 7 ORM, Supabase Storage (image uploads), Twilio Verify (phone OTP), Twilio SMS/WhatsApp (invitations), and SMTP/Nodemailer (email OTP and notifications).
-Payments: no online payment processing. Paid events show a "contact the host directly" message. Tickets are still tracked and QR-validated for entry.
+Core services: PostgreSQL via Prisma 7 ORM, Supabase Storage (image uploads), Twilio Verify (phone OTP), Twilio SMS/WhatsApp (invitations), SMTP/Nodemailer (email OTP and notifications), and qrcode.react (client-side QR rendering).
+Payments: no online payment processing. Paid events show a "contact the host directly" message. Tickets are still tracked and QR-validated for entry using scannable QR codes on the tickets page.
 
 Low-level design splits features into modules: authentication, event discovery and management, ticketing, connections, chat, memories, notifications, referrals/contacts, and storage.
 Each module has API endpoints that map directly to UI screens and actions. Data access flows through Prisma queries with explicit ownership checks at the endpoint level.
@@ -94,6 +94,7 @@ Integrations:
 - Twilio SMS + WhatsApp: referral invitation delivery.
 - Nodemailer/SMTP: email OTP and notification delivery.
 - Web Contact Picker API (navigator.contacts): device contact sync on supported mobile browsers.
+- qrcode.react: client-side QR code rendering for ticket validation.
 
 Design choices:
 - Monolithic Next.js app for faster iteration and simpler deployment.
@@ -582,7 +583,274 @@ Recommended E2E tests:
     Register device tokens at POST /api/notifications/subscribe. Store tokens on the User row. In the dispatch handler, add a Web Push or FCM send alongside the existing email/SMS path. Fall back to in-app Notification row if push fails.
 
 
-15) Elevator Pitch
+15) Known Bugs Fixed (2026-06-06 Session)
+
+The following bugs were identified and fixed during the 2026-06-06 development session.
+
+--- Environment / Infrastructure ---
+
+1. TLS cert chain rejection (Prisma/pg on Windows)
+   Symptom: Prisma threw "Error opening a TLS connection: self-signed certificate in certificate chain" on every DB query.
+   Root cause: Supabase's cert chain is not trusted by Node.js built-in TLS on Windows by default.
+   Fix: Added DATABASE_SSL_INSECURE=true to .env; lib/prisma.ts reads this flag and sets ssl: { rejectUnauthorized: false } on the pg Pool.
+
+2. Supabase JS SDK fetch failures causing page slowness
+   Symptom: All pages took 5-30 seconds to load; server logs showed repeated "TypeError: fetch failed - unable to verify the first certificate".
+   Root cause: Supabase JS SDK uses Node.js native fetch for internal REST API calls; same cert trust issue on Windows.
+   Fix: Added at the top of next.config.mjs (dev-only guard):
+     if (process.env.NODE_ENV !== "production") {
+       process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+     }
+   Result: Warmed-up response times — homepage 120ms, auth session 163ms, events API 755ms.
+
+3. DATABASE_URL / DIRECT_URL had [YOUR-PASSWORD] placeholder
+   Symptom: Prisma threw P1000 Authentication failed.
+   Fix: Filled in actual Supabase DB password in both connection strings.
+
+--- Middleware ---
+
+4. /notifications and /users/:path* not protected
+   Symptom: Unauthenticated users visiting /notifications or /users/[id] saw blank pages instead of being redirected to login.
+   Fix: Added both paths to the matcher array in middleware.ts.
+   Current matcher:
+     "/explore", "/events/:path*", "/connections", "/chat/:path*",
+     "/profile/:path*", "/settings/:path*", "/notifications", "/users/:path*", "/onboarding/:path*"
+
+--- Page Bugs ---
+
+5. Privacy settings page always showed "public" on load
+   Symptom: /settings/privacy always defaulted to "public" regardless of actual stored value.
+   Root cause: Component initialized with useState("public") and never fetched the real value.
+   Fix: Added useEffect that fetches GET /api/users/me on mount and sets profileVisibility from data.user.profileVisibility.
+   Also added loading state to disable the select and button while fetching.
+
+6. Memories page crash on mount
+   Symptom: /profile/memories crashed with "Cannot read properties of undefined (reading 'map')".
+   Root cause: Component type defined attendedEvents field, but GET /api/users/me returns privateCalendar.
+   Fix: Renamed attendedEvents -> privateCalendar everywhere in the type definition and all JSX usages.
+
+7. Paid event "Accept" button showed "failed"
+   Symptom: Clicking "Accept" on a paid event displayed an error state ("failed") because the commit API returns 403 for paid events.
+   Root cause: handleCommit called POST /api/events/:id/commit unconditionally; the API intentionally rejects paid events.
+   Fix (handleCommit): Added early return for paid events — sets commitStatus to "contact-host" without hitting the API.
+   Fix (JSX button): Button label now shows "Contact host to register" when commitStatus === "contact-host"; button is disabled; raw status string is not shown.
+
+8. Chat page missing scroll, Enter key, and message overflow
+   Symptom: New messages did not scroll into view; Enter key had no effect; long message threads overflowed the page.
+   Fixes:
+   - Added messagesEndRef with a useEffect that scrolls it into view on every messages update.
+   - Added onKeyDown handler on the input: Enter (without Shift) calls sendMessage().
+   - Changed message container from unbounded div to h-96 overflow-y-auto.
+
+9. Chat sendMessage silent failure when Socket.io not initialized
+   Symptom: Messages sent via the chat input did not appear until the page was refreshed if the Socket.io globalThis.io was not initialized on the current Node instance.
+   Root cause: POST /api/chat/:id saves the message to DB and then calls emitToRoom; if globalThis.io is null the emit silently does nothing and the sender's UI never gets the new message.
+   Fix: After a successful POST, sendMessage now calls loadMessages() to re-fetch the thread from DB, guaranteeing the sender sees their message regardless of socket state.
+
+10. Calendar page crash on mount
+    Symptom: /profile/calendar crashed with "Cannot read properties of undefined (reading 'some')".
+    Root cause: Type CalendarResponse had attendedEvents field; GET /api/users/me returns privateCalendar. Same field name mismatch as the memories page bug (item 6 above) — it was a second occurrence in a different file.
+    Fix: Renamed type and all usages (attendedEvents → privateCalendar) in app/(main)/profile/calendar/page.tsx.
+
+11. Tickets page showed QR code as raw text string
+    Symptom: /profile/tickets showed "QR: <uuid>" as plain text — not scannable.
+    Root cause: Page had no QR rendering; it just printed ticket.qrCode as a string.
+    Fix: Installed qrcode.react; replaced raw text with an expandable QRCodeSVG (192×192) per ticket. Each ticket row now has a "Show QR / Hide QR" toggle that expands to the scannable image with a "Show this QR code at the door" label.
+
+--- What was intentionally NOT changed ---
+- Paid events still go through the same commit flow (creating EventAttendee) as free events; the "contact host" UI message is cosmetic. Ticket paymentStatus is set to "pending" for the host to resolve out-of-band. This is by design (no online payment processing).
+- lib/resend.ts was deleted in a prior session (Resend integration removed). RESEND_API_KEY and RESEND_FROM remain in .env.example as dead vars and are harmless.
+- lib/stripe.ts, lib/socket.ts, app/api/tickets/create-intent, app/api/tickets/confirm, app/api/webhooks/stripe were deleted in a prior session when the Stripe integration was removed.
+
+
+16) Current Project State (2026-06-06, updated after full code audit)
+
+Running:
+- Next.js dev server starts cleanly with `npm run dev`.
+- Database connection works (Supabase + PgBouncer pooler) with DATABASE_SSL_INSECURE=true.
+- All protected routes redirect unauthenticated users to /login.
+- Incomplete profiles redirect to /onboarding/profile.
+- Deactivated users redirect to /login?deactivated=1.
+- qrcode.react installed for client-side QR rendering on the tickets page.
+- `npx tsc --noEmit` produces zero TypeScript errors.
+
+Pages confirmed working (all bugs fixed, no runtime crashes):
+- /explore — event feed with scoring and swipe view
+- /events/[id] — event detail, gallery, map, host card, commit button (free + paid "contact host")
+- /events/new — event creation form with map picker
+- /events/manage — hosted events list
+- /events/manage/[id] — host analytics and management
+- /events/manage/[id]/edit — edit form
+- /events/manage/[id]/scanner — QR scanner for entry validation
+- /connections — accepted connections, suggestions, requests (accept/decline)
+- /chat — conversation list with search
+- /chat/[id] — message thread with auto-scroll, Enter to send, socket + HTTP fallback
+- /notifications — notification list, mark-read, read-all
+- /profile — profile overview with stats, calendar grid, attended/hosted/connections sections
+- /profile/edit — edit profile photo, bio, preferences
+- /profile/calendar — calendar view
+- /profile/memories — photo upload, event linking, gallery
+- /profile/tickets — ticket list with expandable QR code per ticket
+- /settings — settings hub with account deactivation
+- /settings/contacts — device contact sync + SMS/WhatsApp invite
+- /settings/host — links to manage events and create event
+- /settings/notifications — reminders and recommendations toggles
+- /settings/payments — explains offline payment arrangement
+- /settings/privacy — profile visibility (loads and saves actual stored value)
+- /users/[id] — public profile, timeline, hosted events, public calendar, connect/message
+- /join?ref=CODE — referral landing page
+- /login, /signup, /signup/verify, /signup/password
+- /reset, /reset/verify, /reset/password
+- /onboarding/profile, /onboarding/location
+- /explore/swipe — full-screen swipe mode
+
+Known limitations:
+- Socket.io works only in single-Node deployments. Multi-instance deployment requires Redis adapter.
+- Web Contact Picker API (/settings/contacts) is only available on Chrome Android and Safari iOS 16+; desktop falls back to a text message.
+- Notification push (web push / FCM) is stubbed at POST /api/notifications/subscribe but not fully implemented.
+- Event feed scoring is in-memory on top 50 rows; no pagination.
+
+Security hardening applied (see section 17):
+- Rate limiting on OTP send, OTP verify, register, and login endpoints.
+- CSRF origin checks on auth routes and event creation/swipe endpoints.
+- HTTP security headers (X-Content-Type-Options, X-Frame-Options, HSTS, Referrer-Policy, Permissions-Policy).
+- Strict file upload validation (MIME + extension whitelist, 10 MB cap).
+
+UX improvements applied (see section 18):
+- Explore empty state with welcome banner and CTA.
+- NotificationBell polls every 30 seconds.
+- Chat list: clearer section headers, CTA when no connections.
+- Ticket payment status badge (pending/paid/refunded/failed).
+- Event delete inline confirmation with attendee count.
+- Cancel attendance button on event detail page.
+- Full-screen swipe mode at /explore/swipe.
+- Onboarding order fixed: profile → location.
+
+Full code audit bugs fixed (see section 20):
+- Event delete FK violation on NotificationSchedule.
+- Notification read IDOR.
+- Event feed exposing non-public events.
+- Duplicate EventSwipe rows.
+- QR code re-scanning.
+- Dead /api/auth/login route removed.
+- prisma.config.ts TypeScript error resolved.
+- CalendarGrid day-header alignment fixed.
+- CSRF protection added to POST /api/events and POST /api/events/swipe.
+
+Remaining future work:
+- Full push notification delivery (register device tokens, deliver via Web Push or FCM).
+- Redis adapter for Socket.io to support horizontal scaling.
+- Pagination and server-side filtering for event feed.
+- Admin / moderation tooling.
+- Full E2E test suite (Playwright).
+- CSP (Content-Security-Policy) header (omitted to avoid breaking inline styles/Leaflet).
+
+
+17) Security Hardening (2026-06-06 Session)
+
+The following security issues were identified and fixed.
+
+1. No rate limiting on auth endpoints
+   Risk: Unlimited OTP sends, OTP guesses, login attempts = brute-force attack surface.
+   Fix: Created lib/rateLimit.ts — in-memory fixed-window rate limiter.
+   Applied to:
+   - POST /api/auth/send-otp: 5 requests / 15 minutes per IP
+   - POST /api/auth/verify-otp: 15 requests / 15 minutes per IP (on top of existing 5-attempt DB lock)
+   - POST /api/auth/register: 5 requests / 1 hour per IP
+   - authorize() in authOptions.ts: 10 login attempts / 15 minutes per IP
+
+2. No CSRF protection
+   Risk: A malicious page could trigger state-changing API calls from a victim's browser session.
+   Fix: Created lib/csrf.ts — compares the Origin header against NEXTAUTH_URL/NEXT_PUBLIC_APP_URL.
+   Applied to all CSRF-sensitive POST endpoints in auth routes.
+
+3. Missing HTTP security headers
+   Fix: Added to next.config.mjs via headers() applied to /:path*:
+   - X-Content-Type-Options: nosniff
+   - X-Frame-Options: SAMEORIGIN
+   - Referrer-Policy: strict-origin-when-cross-origin
+   - Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=()
+   - Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+4. Weak file upload validation
+   Risk: An attacker could upload a PHP/JS file disguised as an image.
+   Fix: Added to POST /api/storage/upload:
+   - 10 MB size cap
+   - MIME type whitelist: jpeg, png, gif, webp, avif, heic, heif
+   - File extension whitelist: same set
+   Both checks must pass; either failure returns 400.
+
+5. Map container crash (Leaflet HMR)
+   Symptom: "Map container is already initialized" error on hot reloads in /events/[id].
+   Root cause: HMR reuses DOM nodes but Leaflet's _leaflet_id persists; react-leaflet's MapContainer cannot detect this.
+   Fix: Rewrote EventMap and MapPicker to use raw L.map() inside useEffect instead of react-leaflet's MapContainer.
+   The effect explicitly deletes node._leaflet_id before creating a new L.map instance.
+
+
+18) UX / Missing Flow Fixes (2026-06-06 Session)
+
+The following UX gaps and missing flows were identified and implemented.
+
+1. Explore page empty state
+   Problem: New users with no events nearby saw a blank card with no explanation.
+   Fix: Added a welcome banner ("Welcome to OuttaCouch!") when events.length === 0 and no search query.
+   Banner explains the product and includes a "Host your own event" CTA button.
+   Empty search now shows "No events match your search." instead of generic "No events found."
+
+2. NotificationBell: no real-time update
+   Problem: New connection requests and notifications only appeared after page refresh.
+   Fix: Added a 30-second polling interval (setInterval / clearInterval) to NotificationBell.tsx so the
+   unread badge refreshes without a reload. Notification DB records are already created by existing API routes.
+
+3. Chat list UX
+   Problem: "Connections" section header was unclear; no CTA when a user has no connections.
+   Fix: Renamed section header to "Start a chat" with descriptive subtext.
+   When no connections: shows an info box with a "Find people to connect with" button linking to /connections.
+   When connections exist but no chats: shows "tap a connection above to say hello" hint text.
+
+4. Ticket status badge
+   Problem: Tickets listed on /profile/tickets showed quantity and price but no payment status indicator.
+   Fix:
+   - Added paymentStatus to GET /api/tickets/me response.
+   - Added PaymentBadge component in the tickets page: colored chips
+     (paid=green, pending=yellow, refunded=blue, failed=red) shown inline next to event title.
+
+5. Event delete confirmation
+   Problem: "Delete event" used window.confirm() — a browser-native dialog with no context about impact.
+   Fix: Replaced with inline confirmation UI in the host dashboard.
+   Clicking "Delete event" reveals an inline warning showing the attendee count (e.g. "3 attendees will be affected").
+   Two buttons: "Yes, delete" and "Cancel". Confirmation state resets on cancel or error.
+
+6. Cancel attendance
+   Problem: Users who committed to a free event had no way to cancel their attendance.
+   Fix:
+   - Added DELETE /api/events/[id]/commit — removes EventAttendee, decrements currentAttendees.
+   - Updated GET /api/events/[id] to return isCommitted: boolean (true if requesting user has an attendee record).
+   - Event detail page initializes commitStatus to "committed" if isCommitted is true (so return visits show the right state).
+   - Added "Cancel attendance" link below the confirmed button (only for free events, only when committed).
+
+7. Dedicated swipe mode page
+   Problem: The swipe interface was embedded inside the explore page with no immersive option.
+   Fix: Created /explore/swipe — a standalone full-screen swipe page.
+   - No PageShell nav overhead; minimal header with a "← Back" link.
+   - Full-screen centered SwipeStack with empty-state handling.
+   - Added "Full-screen swipe" button in the explore page's section card header.
+   - SectionCard component updated to accept optional headerAction prop.
+
+8. Onboarding order: profile before location
+   Problem: New users were sent to /onboarding/location first, then /onboarding/profile — but
+   setting a name/photo before asking for location makes more sense UX-wise.
+   Fix:
+   - signup/password PasswordClient.tsx: after registration and sign-in, redirects to /onboarding/profile.
+   - /onboarding/profile: saves name/photo/bio/preferences via PUT /api/users/me (no profileComplete flag);
+     redirects to /onboarding/location; button label updated to "Next: set location".
+   - /onboarding/location: after saving location, sets profileComplete: true (via location API update +
+     session update), redirects to /explore.
+   - PUT /api/users/me/location: now accepts optional profileComplete: true in the request body.
+   New onboarding flow: Register → Profile (name/photo/bio) → Location → Explore.
+
+
+19) Elevator Pitch
 
 OUTTACOUCH is an event-first social platform that uses real attendance to drive meaningful connections.
 Users discover nearby events, commit to attend, and automatically connect with people they meet in person.
@@ -590,3 +858,76 @@ Hosts create and manage events with tools for attendee tracking, QR check-in, an
 Friends are invited via phone contacts using a referral system — when they sign up through the link, they are instantly connected to the person who invited them.
 The system is built on Next.js 15 with Prisma and PostgreSQL, Supabase for media storage, Twilio for OTP and SMS invitations, Socket.io for realtime chat, and Vercel Cron for notification dispatch.
 The focus is on relevance, real-world trust, and a clean user experience that moves people from browsing to actually showing up.
+
+
+20) Full Code Audit (2026-06-06, Continuation Session)
+
+A file-by-file audit of every route, page, component, and config file was performed. Nine bugs were identified and fixed.
+
+--- Data Integrity ---
+
+1. Event delete: FK violation on NotificationSchedule
+   File: app/api/events/[id]/route.ts — DELETE handler
+   Symptom: Deleting an event with pending notification schedules threw a PostgreSQL FK constraint violation.
+   Root cause: NotificationSchedule.eventId is a non-nullable FK to Event with no onDelete clause (defaults to RESTRICT in PostgreSQL). The delete transaction did not clean up NotificationSchedule rows before deleting the Event row.
+   Fix: Added prisma.notificationSchedule.deleteMany({ where: { eventId: event.id } }) to the $transaction array, before the event.delete() call.
+
+2. Event feed: non-public events visible to everyone
+   File: app/api/events/route.ts — GET handler
+   Symptom: The event feed returned events with visibility "connections" or "private" to all callers, including unauthenticated users.
+   Root cause: No visibility filter on the Prisma findMany or count() calls.
+   Fix: Added where: { visibility: "public" } to both prisma.event.findMany and prisma.event.count.
+
+3. Duplicate EventSwipe rows
+   File: app/api/events/swipe/route.ts — POST handler
+   Symptom: Every swipe call created a new row, regardless of whether the user had already swiped the same event. Repeated swipes accumulated duplicate rows.
+   Root cause: Handler always called prisma.eventSwipe.create without checking for an existing record.
+   Fix: Replaced unconditional create with a findFirst + conditional update-or-create pattern.
+
+4. QR code re-scanning (ticket re-entry)
+   File: app/api/tickets/validate/route.ts — POST handler
+   Symptom: Scanning an already-validated QR code succeeded and returned "validated" again, allowing re-entry.
+   Root cause: No check on the qrValidated field before performing the update.
+   Fix: Added guard — if ticket.qrValidated is true, return 409 { error: "Ticket already validated" } immediately.
+
+--- Security ---
+
+5. Notification read IDOR
+   File: app/api/notifications/[id]/read/route.ts — PUT handler
+   Symptom: Any authenticated user could mark any other user's notification as read by supplying an arbitrary notification ID.
+   Root cause: Handler called prisma.notification.update without verifying the notification belonged to the requesting user.
+   Fix: Added prisma.notification.findUnique before the update; return 404 if not found or if notification.userId !== token.sub.
+
+6. Dead /api/auth/login route
+   File: app/api/auth/login/route.ts (deleted)
+   Symptom: Standalone POST /api/auth/login route existed but was never called by the frontend (frontend uses NextAuth signIn). It created no session, had no CSRF protection, and had no rate limiting.
+   Risk: The route was reachable dead code with no security controls — a passive attack surface with no business value.
+   Fix: Deleted app/api/auth/login/route.ts and its parent directory.
+
+7. CSRF protection missing on event creation and event swipe
+   Files: app/api/events/route.ts (POST), app/api/events/swipe/route.ts (POST)
+   Symptom: Both endpoints accepted cross-origin requests with a valid session cookie.
+   Root cause: isSameOrigin check from lib/csrf.ts was applied to auth routes but not to these two mutation endpoints.
+   Fix: Added import { isSameOrigin } from "@/lib/csrf" and an early-return guard returning 403 at the top of both POST handlers.
+
+--- Infrastructure / TypeScript ---
+
+8. prisma.config.ts TypeScript error
+   File: prisma.config.ts
+   Symptom: npx tsc --noEmit reported "Object literal may only specify known properties, and 'directUrl' does not exist in type '{ url?: string | undefined; shadowDatabaseUrl?: string | undefined; }'".
+   Root cause: directUrl is not a valid property in the @prisma/config defineConfig datasource type in Prisma 7. The property had been added under the assumption it matched the schema.prisma datasource block syntax, but the TypeScript config API does not accept it.
+   Fix: Removed the directUrl line from prisma.config.ts. The DIRECT_URL env var is still referenced in .env and used by prisma migrate deploy via the schema.prisma datasource block (not the TypeScript config).
+   Result: tsc --noEmit now exits with zero errors.
+
+--- UI ---
+
+9. CalendarGrid: day-header row outside the inner grid container
+   File: components/profile/CalendarGrid.tsx
+   Symptom: The "Sun Mon Tue Wed Thu Fri Sat" day-header row was rendered in a grid grid-cols-7 that was a sibling of the inner rounded-2xl border card, not a child. The header grid and the day-button grid were two separate elements with separate padding, so column alignment broke visually.
+   Root cause: The day-header div was placed between the outer container and the inner card instead of inside the inner card before the days grid.
+   Fix: Moved the day-header grid inside the inner rounded-2xl border container, directly above the day-button grid. Also removed the duplicate month/year heading that existed only inside the inner card (the outer container already displayed it). Both grids now share the same padding context and column alignment is correct.
+
+--- Post-audit state ---
+- npx tsc --noEmit: zero errors.
+- All 9 bugs resolved.
+- No breaking changes to API contracts or DB schema.

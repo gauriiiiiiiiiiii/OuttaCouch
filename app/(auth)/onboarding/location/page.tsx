@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
 
@@ -20,6 +21,7 @@ type GeoResult = {
 
 export default function LocationOnboardingPage() {
   const router = useRouter();
+  const { update } = useSession();
   const { register, handleSubmit, setValue, watch } = useForm<LocationForm>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -142,7 +144,7 @@ export default function LocationOnboardingPage() {
     const res = await fetch("/api/users/me/location", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ ...payload, profileComplete: true })
     });
 
     setLoading(false);
@@ -152,7 +154,8 @@ export default function LocationOnboardingPage() {
       return;
     }
 
-    router.push("/onboarding/profile");
+    await update({ profileComplete: true });
+    router.push("/explore");
   };
 
   return (

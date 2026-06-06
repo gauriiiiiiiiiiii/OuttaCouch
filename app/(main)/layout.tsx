@@ -1,11 +1,11 @@
 import Link from "next/link";
 import NotificationBell from "@/components/ui/NotificationBell";
+import ChatBadge from "@/components/ui/ChatBadge";
 
-const navItems = [
+const plainNavItems = [
   { href: "/explore", label: "Explore" },
   { href: "/events/new", label: "Add Event" },
   { href: "/connections", label: "Connections" },
-  { href: "/chat", label: "Chat" },
   { href: "/profile", label: "Profile" }
 ];
 
@@ -24,7 +24,7 @@ export default function MainLayout({
           <NotificationBell />
         </div>
         <nav className="mt-8 flex flex-col gap-1">
-          {navItems.map((item) => (
+          {plainNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -33,16 +33,20 @@ export default function MainLayout({
               {item.label}
             </Link>
           ))}
+          <div className="rounded-lg px-3 py-2 text-sm hover:bg-parchment">
+            <ChatBadge />
+          </div>
         </nav>
       </aside>
       <main className="flex-1 pb-16 md:pb-0">{children}</main>
       <nav className="fixed bottom-0 left-0 right-0 border-t border-neutral-200 bg-white/95 px-4 py-3 text-xs md:hidden">
         <div className="flex items-center justify-around">
-          {navItems.map((item) => (
+          {plainNavItems.map((item) => (
             <Link key={item.href} href={item.href} className="font-semibold">
               {item.label}
             </Link>
           ))}
+          <ChatBadge />
           <NotificationBell />
         </div>
       </nav>

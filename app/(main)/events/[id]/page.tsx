@@ -32,6 +32,8 @@ type EventDetail = {
   ticketPrice: string | null;
   host: { id: string; name: string; photo?: string | null };
   attendeeCount: number;
+  isCommitted: boolean;
+  goingList?: { name: string; photo?: string | null }[];
 };
 
 export default function EventDetailPage() {
@@ -55,6 +57,7 @@ export default function EventDetailPage() {
         const data = (await res.json()) as EventDetail;
         if (active) {
           setEvent(data);
+          if (data.isCommitted) setCommitStatus("committed");
         }
       } catch {
         if (active) {
@@ -167,19 +170,59 @@ export default function EventDetailPage() {
     ];
   }, [event]);
 
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied">("idle");
+
+  const handleShare = async () => {
+    if (!event) return;
+    const url = `${window.location.origin}/events/${event.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: event.title, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setCopyStatus("copied");
+        setTimeout(() => setCopyStatus("idle"), 2000);
+      }
+    } catch {
+      // user cancelled share
+    }
+  };
+
+  const handleCancelAttendance = async () => {
+    if (!event) return;
+    setCommitStatus("cancelling");
+    try {
+      const res = await fetch(`/api/events/${id}/commit`, { method: "DELETE" });
+      if (res.ok) {
+        setCommitStatus(null);
+      } else {
+        setCommitStatus("committed");
+      }
+    } catch {
+      setCommitStatus("committed");
+    }
+  };
+
   const handleCommit = async () => {
+    if (!event) return;
+
+    // Paid events are handled offline — just surface a contact-host message
+    if (!event.isFree) {
+      setCommitStatus("contact-host");
+      return;
+    }
+
     // Prevent duplicate submissions
     if (commitStatus === "committed" || commitStatus === "Already added") {
       return;
     }
-    
+
     setCommitStatus("submitting");
     try {
       const res = await fetch(`/api/events/${id}/commit`, { method: "POST" });
       const data = (await res.json()) as { status?: string; error?: string };
-      
+
       if (data.status === "committed" && event?.eventDate) {
-        // Event successfully committed - store to calendar
         const pending = {
           id: event.id,
           title: event.title,
@@ -193,7 +236,7 @@ export default function EventDetailPage() {
       } else if (data.status === "already-committed") {
         setCommitStatus("Already added");
       } else {
-        setCommitStatus("failed");
+        setCommitStatus(data.error === "Event full" ? "Event full" : "failed");
       }
     } catch {
       setCommitStatus("failed");
@@ -328,6 +371,15 @@ export default function EventDetailPage() {
               </div>
             </div>
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="rounded-full border border-neutral-300 px-4 py-2 text-xs font-semibold"
+                >
+                  {copyStatus === "copied" ? "Link copied!" : "Share event"}
+                </button>
+              </div>
               <div id="tickets" className="rounded-2xl border border-neutral-200 bg-white/95 p-6 shadow-sm">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
                   Tickets
@@ -342,19 +394,34 @@ export default function EventDetailPage() {
                   <button
                     type="button"
                     onClick={handleCommit}
-                    disabled={commitStatus === "committed" || commitStatus === "submitting"}
+                    disabled={
+                      commitStatus === "committed" ||
+                      commitStatus === "submitting" ||
+                      commitStatus === "contact-host"
+                    }
                     className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {commitStatus === "submitting"
                       ? "Confirming..."
                       : commitStatus === "committed"
                         ? "✓ Confirmed"
-                        : "Accept"}
+                        : commitStatus === "contact-host"
+                          ? "Contact host to register"
+                          : "Accept"}
                   </button>
-                  {commitStatus ? (
-                    <span className="text-sm text-neutral-600">{commitStatus}</span>
+                  {commitStatus && commitStatus !== "contact-host" && commitStatus !== "committed" ? (
+                    <span className="text-sm text-neutral-500">{commitStatus}</span>
                   ) : null}
                 </div>
+                {commitStatus === "committed" && event.isFree ? (
+                  <button
+                    type="button"
+                    onClick={handleCancelAttendance}
+                    className="mt-2 text-xs text-neutral-500 underline hover:text-red-600"
+                  >
+                    Cancel attendance
+                  </button>
+                ) : null}
                 {!event.isFree ? (
                   <p className="mt-2 text-xs text-neutral-500">
                     Paid event — arrange payment with the host directly.
@@ -371,6 +438,42 @@ export default function EventDetailPage() {
                   <li>Address: {event.address}</li>
                 </ul>
               </div>
+              {event.goingList && event.goingList.length > 0 ? (
+                <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                    Going ({event.attendeeCount})
+                  </h3>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {event.goingList.map((attendee, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white/95 px-2 py-1"
+                        title={attendee.name}
+                      >
+                        <div className="relative h-5 w-5 overflow-hidden rounded-full bg-neutral-200 flex-shrink-0">
+                          {attendee.photo ? (
+                            <Image
+                              src={attendee.photo}
+                              alt={attendee.name}
+                              fill
+                              sizes="20px"
+                              className="object-cover"
+                            />
+                          ) : null}
+                        </div>
+                        <span className="max-w-[80px] truncate text-[11px] font-medium">
+                          {attendee.name}
+                        </span>
+                      </div>
+                    ))}
+                    {event.attendeeCount > 10 ? (
+                      <span className="rounded-full border border-neutral-200 bg-white/95 px-2 py-1 text-[11px] text-neutral-500">
+                        +{event.attendeeCount - 10} more
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
                   Similar events

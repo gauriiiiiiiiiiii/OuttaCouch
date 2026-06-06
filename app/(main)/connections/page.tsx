@@ -16,6 +16,14 @@ type Suggestion = {
   sharedCount: number;
 };
 
+type DiscoverResult = {
+  userId: string;
+  name: string;
+  photo?: string | null;
+  city?: string | null;
+  matchReason: string;
+};
+
 type Connection = {
   id: string;
   userId: string;
@@ -38,15 +46,17 @@ export default function ConnectionsPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [requests, setRequests] = useState<ConnectionRequest[]>([]);
+  const [nearby, setNearby] = useState<DiscoverResult[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const [suggestionsRes, connectionsRes, requestsRes] = await Promise.all([
+      const [suggestionsRes, connectionsRes, requestsRes, discoverRes] = await Promise.all([
         fetch("/api/connections/suggestions"),
         fetch("/api/connections"),
-        fetch("/api/connections/requests")
+        fetch("/api/connections/requests"),
+        fetch("/api/connections/discover")
       ]);
       const suggestionsData = suggestionsRes.ok
         ? ((await suggestionsRes.json()) as { suggestions: Suggestion[] })
@@ -57,11 +67,15 @@ export default function ConnectionsPage() {
       const requestsData = requestsRes.ok
         ? ((await requestsRes.json()) as { requests: ConnectionRequest[] })
         : { requests: [] };
+      const discoverData = discoverRes.ok
+        ? ((await discoverRes.json()) as { results: DiscoverResult[] })
+        : { results: [] };
 
       if (active) {
         setSuggestions(suggestionsData.suggestions ?? []);
         setConnections(connectionsData.connections ?? []);
         setRequests(requestsData.requests ?? []);
+        setNearby(discoverData.results ?? []);
         setLoading(false);
       }
     };
@@ -226,6 +240,60 @@ export default function ConnectionsPage() {
               )}
             </div>
           </section>
+          {nearby.length > 0 ? (
+            <section className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
+              <div>
+                <h2 className="text-lg font-semibold">People nearby</h2>
+                <p className="text-sm text-neutral-500">
+                  Users with shared interests or location.
+                </p>
+              </div>
+              <div className="mt-5 space-y-3">
+                {nearby.map((person) => (
+                  <div
+                    key={person.userId}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-neutral-200 bg-white/95 p-4"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => navigateToProfile(router, person.userId)}
+                      className="flex flex-1 items-center gap-3 text-left"
+                    >
+                      <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-full bg-neutral-200">
+                        {person.photo ? (
+                          <Image
+                            src={person.photo}
+                            alt={person.name}
+                            fill
+                            sizes="48px"
+                            className="rounded-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">{person.name}</p>
+                        <p className="text-xs text-neutral-500">{person.matchReason}</p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        fetch(`/api/connections/request/${person.userId}`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ sharedEventId: null })
+                        });
+                        setNearby((prev) => prev.filter((p) => p.userId !== person.userId));
+                      }}
+                      className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-parchment"
+                    >
+                      Connect
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
           <section className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
             <div className="flex items-center justify-between">
               <div>

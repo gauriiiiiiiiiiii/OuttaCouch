@@ -6,7 +6,7 @@ import MemoriesGrid from "@/components/profile/MemoriesGrid";
 import { StorageService } from "@/lib/services/storage";
 
 type MemoriesResponse = {
-  attendedEvents: {
+  privateCalendar: {
     id: string;
     title: string;
     date: string;
@@ -150,7 +150,7 @@ export default function MemoriesPage() {
                 onChange={(event) => setEventId(event.target.value || null)}
               >
                 <option value="">Select event (optional)</option>
-                {data.attendedEvents.map((event) => (
+                {data.privateCalendar.map((event) => (
                   <option key={event.id} value={event.id}>
                     {event.title}
                   </option>
@@ -178,17 +178,42 @@ export default function MemoriesPage() {
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-ocean">
               Your uploads
             </h3>
-            <MemoriesGrid
-              items={memories.map((memory) => ({
-                id: memory.id,
-                title: memory.event?.title ?? "Memory",
-                date: memory.createdAt,
-                category: memory.event?.category ?? "Other",
-                imageUrl: memory.imageUrl,
-                caption: memory.caption,
-                eventTitle: memory.event?.title ?? null
-              }))}
-            />
+            {memories.length === 0 ? (
+              <p className="text-sm text-neutral-600">No uploads yet.</p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {memories.map((memory) => (
+                  <div
+                    key={memory.id}
+                    className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-white/95"
+                  >
+                    <MemoriesGrid
+                      items={[{
+                        id: memory.id,
+                        title: memory.event?.title ?? "Memory",
+                        date: memory.createdAt,
+                        category: memory.event?.category ?? "Other",
+                        imageUrl: memory.imageUrl,
+                        caption: memory.caption,
+                        eventTitle: memory.event?.title ?? null
+                      }]}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await fetch(`/api/memories/${memory.id}`, { method: "DELETE" });
+                        if (res.ok) {
+                          setMemories((prev) => prev.filter((m) => m.id !== memory.id));
+                        }
+                      }}
+                      className="absolute right-2 top-2 rounded-full border border-red-300 bg-white/90 px-2 py-1 text-[11px] font-semibold text-red-600 shadow-sm hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -196,7 +221,7 @@ export default function MemoriesPage() {
               From your events
             </h3>
             <MemoriesGrid
-              items={data.attendedEvents.map((event) => ({
+              items={data.privateCalendar.map((event) => ({
                 id: event.id,
                 title: event.title,
                 date: event.date,

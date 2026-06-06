@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { normalizeContact } from "@/lib/normalizeContact";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
+import { isSameOrigin } from "@/lib/csrf";
 
 type RegisterBody = {
   contact: string;
@@ -11,6 +13,24 @@ type RegisterBody = {
 };
 
 export async function POST(request: Request) {
+  // CSRF
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Rate limit: 5 registrations per IP per hour
+  const ip = getClientIp(request);
+  const rl = rateLimit(`register:${ip}`, 5, 60 * 60 * 1000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) }
+      }
+    );
+  }
+
   const body = (await request.json()) as RegisterBody;
   const contact = normalizeContact(body.contact);
 

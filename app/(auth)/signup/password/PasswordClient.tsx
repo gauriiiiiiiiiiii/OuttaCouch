@@ -49,7 +49,7 @@ export default function PasswordClient() {
       password: values.password
     });
 
-    router.push("/onboarding/location");
+    router.push("/onboarding/profile");
   };
 
   return (

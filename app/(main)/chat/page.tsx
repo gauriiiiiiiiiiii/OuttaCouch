@@ -68,10 +68,18 @@ export default function ChatListPage() {
     <PageShell title="Chat" subtitle="Conversations with connections.">
       <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
         <div className="mb-6">
-          <h2 className="text-lg font-semibold">Connections</h2>
-          <p className="text-sm text-neutral-500">Start a new conversation.</p>
+          <h2 className="text-lg font-semibold">Start a chat</h2>
+          <p className="text-sm text-neutral-500">Tap a connection to open or start a conversation.</p>
           {connections.length === 0 ? (
-            <p className="mt-3 text-sm text-neutral-600">No connections yet.</p>
+            <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
+              <p>You don&apos;t have any connections yet.</p>
+              <a
+                href="/connections"
+                className="mt-2 inline-block rounded-full bg-ink px-4 py-1.5 text-xs font-semibold text-parchment"
+              >
+                Find people to connect with
+              </a>
+            </div>
           ) : (
             <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
               {connections.map((connection) => {
@@ -131,7 +139,11 @@ export default function ChatListPage() {
         {loading ? (
           <p className="text-sm text-neutral-600">Loading chats...</p>
         ) : chats.length === 0 ? (
-          <p className="text-sm text-neutral-600">No conversations yet.</p>
+          <p className="text-sm text-neutral-600">
+            {connections.length > 0
+              ? "No conversations yet — tap a connection above to say hello."
+              : "No conversations yet."}
+          </p>
         ) : (
           <div className="space-y-3">
             {chats

@@ -5,11 +5,12 @@ import PageShell from "@/components/ui/PageShell";
 import CalendarGrid from "@/components/profile/CalendarGrid";
 
 type CalendarResponse = {
-  attendedEvents: {
+  privateCalendar: {
     id: string;
     title: string;
     date: string;
     category: string;
+    status: string;
     imageUrl?: string | null;
   }[];
 };
@@ -40,9 +41,9 @@ export default function CalendarPage() {
                 status: string;
                 imageUrl?: string | null;
               };
-              const exists = json.attendedEvents.some((event) => event.id === pending.id);
+              const exists = json.privateCalendar.some((event) => event.id === pending.id);
               if (!exists) {
-                json.attendedEvents = [pending, ...json.attendedEvents];
+                json.privateCalendar = [pending, ...json.privateCalendar];
               } else {
                 localStorage.removeItem("calendarPendingEvent");
               }
@@ -79,7 +80,7 @@ export default function CalendarPage() {
           {error ?? "Calendar not found."}
         </div>
       ) : (
-        <CalendarGrid events={data.attendedEvents} />
+        <CalendarGrid events={data.privateCalendar} />
       )}
     </PageShell>
   );

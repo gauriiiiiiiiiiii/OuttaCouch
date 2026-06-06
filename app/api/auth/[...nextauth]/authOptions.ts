@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { normalizeContact } from "@/lib/normalizeContact";
+import { rateLimit } from "@/lib/rateLimit";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -12,12 +13,22 @@ export const authOptions: NextAuthOptions = {
         contact: { label: "Email or phone", type: "text" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         const contact = normalizeContact(credentials?.contact);
         const password = credentials?.password || "";
 
         if (!contact || !password) {
           return null;
+        }
+
+        // Rate limit: 10 login attempts per IP per 15 minutes
+        const ip =
+          (req?.headers?.["x-forwarded-for"] as string)?.split(",")[0]?.trim() ??
+          (req?.headers?.["x-real-ip"] as string) ??
+          "unknown";
+        const rl = rateLimit(`login:${ip}`, 10, 15 * 60 * 1000);
+        if (!rl.allowed) {
+          throw new Error("Too many login attempts. Try again later.");
         }
 
         const user = await prisma.user.findFirst({

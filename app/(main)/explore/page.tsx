@@ -9,32 +9,32 @@ import type { EventSummary } from "@/types";
 
 export default function ExplorePage() {
   const router = useRouter();
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [hiddenEvents, setHiddenEvents] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const res = await fetch("/api/events");
-        if (!res.ok) {
-          throw new Error("Failed to load events");
-        }
-        const data = (await res.json()) as { events: EventSummary[] };
+        const res = await fetch("/api/events?page=1");
+        if (!res.ok) throw new Error("Failed to load events");
+        const data = (await res.json()) as { events: EventSummary[]; hasMore: boolean };
         if (active) {
           setEvents(data.events || []);
+          setHasMore(data.hasMore ?? false);
+          setPage(1);
         }
       } catch {
-        if (active) {
-          setError("Could not load events.");
-        }
+        if (active) setError("Could not load events.");
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     };
     load();
@@ -80,9 +80,17 @@ export default function ExplorePage() {
   ];
 
   const baseEvents = events.length > 0 ? events : dummyEvents;
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(events.map((e) => e.category).filter(Boolean)));
+    return cats.sort();
+  }, [events]);
+
   const filteredEvents = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
     let filtered = baseEvents.filter((event) => !hiddenEvents.has(event.id));
+    if (categoryFilter) {
+      filtered = filtered.filter((event) => event.category === categoryFilter);
+    }
     if (trimmed) {
       filtered = filtered.filter((event) =>
         [event.title, event.category, event.location]
@@ -92,9 +100,8 @@ export default function ExplorePage() {
           .includes(trimmed)
       );
     }
-
     return filtered;
-  }, [baseEvents, query, hiddenEvents]);
+  }, [baseEvents, query, hiddenEvents, categoryFilter]);
 
   const handleSwipe = async (
     event: EventSummary,
@@ -125,6 +132,26 @@ export default function ExplorePage() {
     }
   };
 
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await fetch(`/api/events?page=${nextPage}`);
+      if (res.ok) {
+        const data = (await res.json()) as { events: EventSummary[]; hasMore: boolean };
+        setEvents((prev) => {
+          const ids = new Set(prev.map((e) => e.id));
+          const fresh = (data.events ?? []).filter((e) => !ids.has(e.id));
+          return [...prev, ...fresh];
+        });
+        setHasMore(data.hasMore ?? false);
+        setPage(nextPage);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   return (
     <PageShell
       title="Explore events"
@@ -133,6 +160,15 @@ export default function ExplorePage() {
       <SectionCard
         title="Explore"
         description="Swipe to decide."
+        headerAction={
+          <button
+            type="button"
+            onClick={() => router.push("/explore/swipe")}
+            className="rounded-full border border-neutral-300 px-3 py-1.5 text-xs font-semibold hover:bg-neutral-50"
+          >
+            Full-screen swipe
+          </button>
+        }
       >
         {loading ? (
           <p className="text-sm text-neutral-600">Loading events...</p>
@@ -146,13 +182,69 @@ export default function ExplorePage() {
               className="w-full rounded-full border border-neutral-200 px-4 py-2 text-sm"
               placeholder="Search events by name, category, or location"
             />
+            {categories.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCategoryFilter("")}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    !categoryFilter
+                      ? "border-ink bg-ink text-parchment"
+                      : "border-neutral-300 text-neutral-600 hover:border-neutral-400"
+                  }`}
+                >
+                  All
+                </button>
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCategoryFilter(cat === categoryFilter ? "" : cat)}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                      categoryFilter === cat
+                        ? "border-ocean bg-ocean/10 text-ocean"
+                        : "border-neutral-300 text-neutral-600 hover:border-neutral-400"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {events.length === 0 && !loading && !query && (
+              <div className="rounded-2xl border border-ocean/20 bg-ocean/5 p-4 text-sm">
+                <p className="font-semibold text-ink">Welcome to OuttaCouch!</p>
+                <p className="mt-1 text-neutral-600">
+                  No events near you yet — here are some examples to explore. Once hosts
+                  create events in your area, they'll show up here ranked by distance and
+                  your interests.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/events/new")}
+                  className="mt-3 rounded-full bg-ink px-4 py-1.5 text-xs font-semibold text-parchment"
+                >
+                  Host your own event
+                </button>
+              </div>
+            )}
             {filteredEvents.length === 0 ? (
               <div className="rounded-2xl border border-neutral-200 bg-white/80 p-6 text-center text-sm text-neutral-600">
-                No events found.
+                No events match your search.
               </div>
             ) : (
               <SwipeStack events={filteredEvents} onSwipe={handleSwipe} />
             )}
+            {hasMore && !query ? (
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="mt-2 w-full rounded-full border border-neutral-300 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                {loadingMore ? "Loading..." : "Load more events"}
+              </button>
+            ) : null}
           </div>
         )}
       </SectionCard>

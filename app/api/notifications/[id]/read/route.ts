@@ -12,6 +12,11 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const notification = await prisma.notification.findUnique({ where: { id } });
+  if (!notification || notification.userId !== token.sub) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   await prisma.notification.update({
     where: { id },
     data: { readAt: new Date() }
