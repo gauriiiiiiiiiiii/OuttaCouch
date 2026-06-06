@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
 import Link from "next/link";
@@ -14,6 +14,8 @@ type SignupForm = {
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const ref = searchParams?.get("ref") ?? "";
   const { register, handleSubmit, watch } = useForm<SignupForm>({
     defaultValues: { method: "email" }
   });
@@ -40,7 +42,8 @@ export default function SignupPage() {
     }
 
     const contactEncoded = encodeURIComponent(values.contact);
-    router.push(`/signup/verify?contact=${contactEncoded}&type=${type}`);
+    const refPart = ref ? `&ref=${encodeURIComponent(ref)}` : "";
+    router.push(`/signup/verify?contact=${contactEncoded}&type=${type}${refPart}`);
   };
 
   return (

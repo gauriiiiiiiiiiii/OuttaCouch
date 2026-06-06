@@ -339,33 +339,27 @@ export default function EventDetailPage() {
                   Secure your spot before it fills up.
                 </p>
                 <div className="mt-4 flex items-center gap-3">
-                  {event.isFree ? (
-                    <button
-                      type="button"
-                      onClick={handleCommit}
-                      disabled={commitStatus === "committed" || commitStatus === "submitting"}
-                      className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {commitStatus === "submitting"
-                        ? "Confirming..."
-                        : commitStatus === "committed"
-                          ? "✓ Confirmed"
-                          : "Accept"}
-                    </button>
-                  ) : (
-                    <a
-                      href={`/events/${event.id}/ticket`}
-                      className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment"
-                    >
-                      Proceed to payment
-                    </a>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleCommit}
+                    disabled={commitStatus === "committed" || commitStatus === "submitting"}
+                    className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-parchment disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {commitStatus === "submitting"
+                      ? "Confirming..."
+                      : commitStatus === "committed"
+                        ? "✓ Confirmed"
+                        : "Accept"}
+                  </button>
                   {commitStatus ? (
-                    <span className="text-sm text-neutral-600">
-                      {commitStatus}
-                    </span>
+                    <span className="text-sm text-neutral-600">{commitStatus}</span>
                   ) : null}
                 </div>
+                {!event.isFree ? (
+                  <p className="mt-2 text-xs text-neutral-500">
+                    Paid event — arrange payment with the host directly.
+                  </p>
+                ) : null}
               </div>
               <div className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">

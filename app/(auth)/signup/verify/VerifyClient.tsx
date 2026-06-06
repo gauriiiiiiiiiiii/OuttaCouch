@@ -17,6 +17,7 @@ export default function VerifyClient() {
   const searchParams = useSearchParams();
   const contact = searchParams?.get("contact") || "";
   const type = searchParams?.get("type") || (contact.includes("@") ? "email" : "phone");
+  const ref = searchParams?.get("ref") ?? "";
   const { register, handleSubmit } = useForm<VerifyForm>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,7 +51,8 @@ export default function VerifyClient() {
     }
 
     const data = (await res.json()) as { token?: string };
-    router.push(`/signup/password?contact=${encodeURIComponent(contact)}&token=${encodeURIComponent(data.token || "")}`);
+    const refPart = ref ? `&ref=${encodeURIComponent(ref)}` : "";
+    router.push(`/signup/password?contact=${encodeURIComponent(contact)}&token=${encodeURIComponent(data.token || "")}${refPart}`);
   };
 
   const handleResend = async () => {

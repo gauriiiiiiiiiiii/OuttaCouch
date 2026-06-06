@@ -18,8 +18,8 @@ const sections = [
     links: [{ href: "/settings/notifications", label: "Notification settings" }]
   },
   {
-    title: "Payments",
-    links: [{ href: "/settings/payments", label: "Payment methods" }]
+    title: "Contacts",
+    links: [{ href: "/settings/contacts", label: "Sync & invite contacts" }]
   },
   {
     title: "Host tools",

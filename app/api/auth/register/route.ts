@@ -7,6 +7,7 @@ type RegisterBody = {
   contact: string;
   password: string;
   token: string;
+  ref?: string;
 };
 
 export async function POST(request: Request) {
@@ -60,6 +61,58 @@ export async function POST(request: Request) {
     where: { id: otpToken.id },
     data: { usedAt: new Date(), userId: user.id }
   });
+
+  if (body.ref) {
+    const code = body.ref.toUpperCase();
+    try {
+      const invitation = await prisma.contactInvitation.findUnique({
+        where: { referralCode: code }
+      });
+      if (invitation && invitation.status !== "registered") {
+        await prisma.contactInvitation.update({
+          where: { referralCode: code },
+          data: { status: "registered", registeredUserId: user.id }
+        });
+
+        const contactImport = await prisma.contactImport.findFirst({
+          where: { phone: invitation.toPhone, userId: invitation.fromUserId }
+        });
+        if (contactImport) {
+          await prisma.contactImport.update({
+            where: { id: contactImport.id },
+            data: { status: "registered", registeredUserId: user.id, registeredAt: new Date() }
+          });
+        }
+
+        const existingConnection = await prisma.connection.findFirst({
+          where: {
+            OR: [
+              { user1Id: invitation.fromUserId, user2Id: user.id },
+              { user1Id: user.id, user2Id: invitation.fromUserId }
+            ]
+          }
+        });
+        if (!existingConnection) {
+          await prisma.connection.create({
+            data: { user1Id: invitation.fromUserId, user2Id: user.id, status: "accepted", acceptedAt: new Date() }
+          });
+          await prisma.notification.createMany({
+            data: [
+              { userId: invitation.fromUserId, title: "New connection", body: "Your referred friend just joined!", link: "/connections" },
+              { userId: user.id, title: "Connected!", body: "You're now connected with the person who invited you.", link: "/connections" }
+            ]
+          });
+        }
+
+        await prisma.referralLink.updateMany({
+          where: { code, fromUserId: invitation.fromUserId },
+          data: { registrations: { increment: 1 } }
+        });
+      }
+    } catch {
+      // Non-fatal: referral completion failure should not block registration
+    }
+  }
 
   return NextResponse.json({ status: "registered" });
 }

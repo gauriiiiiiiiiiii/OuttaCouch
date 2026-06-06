@@ -6,6 +6,6 @@ export default defineConfig({
   schema: './prisma/schema.prisma',
   datasource: {
     url: env('DATABASE_URL'),
-    // Prisma config only accepts url/shadowDatabaseUrl here; direct connection is handled via env in schema.
+    directUrl: env('DIRECT_URL'),
   },
 });

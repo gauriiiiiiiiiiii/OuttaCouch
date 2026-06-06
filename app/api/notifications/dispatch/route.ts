@@ -1,10 +1,22 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+function isAuthorized(request: NextRequest): boolean {
+  // Manual trigger via x-notification-secret header
+  const dispatchSecret = process.env.NOTIFICATION_DISPATCH_SECRET;
+  const providedSecret = request.headers.get("x-notification-secret");
+  if (dispatchSecret && providedSecret === dispatchSecret) return true;
+
+  // Vercel Cron via Authorization: Bearer <CRON_SECRET>
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get("authorization");
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) return true;
+
+  return false;
+}
+
 export async function POST(request: NextRequest) {
-  const secret = process.env.NOTIFICATION_DISPATCH_SECRET;
-  const provided = request.headers.get("x-notification-secret");
-  if (!secret || provided !== secret) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -35,4 +47,9 @@ export async function POST(request: NextRequest) {
   ]);
 
   return NextResponse.json({ status: "ok", sent: due.length });
+}
+
+// Vercel Cron invokes with GET
+export async function GET(request: NextRequest) {
+  return POST(request);
 }

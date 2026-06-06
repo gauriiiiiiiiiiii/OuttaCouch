@@ -16,6 +16,7 @@ export default function PasswordClient() {
   const searchParams = useSearchParams();
   const contact = searchParams?.get("contact") || "";
   const token = searchParams?.get("token") || "";
+  const ref = searchParams?.get("ref") ?? "";
   const { register, handleSubmit } = useForm<PasswordForm>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,7 +32,7 @@ export default function PasswordClient() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contact, password: values.password, token })
+      body: JSON.stringify({ contact, password: values.password, token, ref: ref || undefined })
     });
 
     setLoading(false);
