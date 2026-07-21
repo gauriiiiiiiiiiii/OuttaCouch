@@ -13,7 +13,28 @@ export async function GET(request: NextRequest) {
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: token.sub }
+      where: { id: token.sub },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        displayName: true,
+        bio: true,
+        profilePhotoUrl: true,
+        city: true,
+        lat: true,
+        lng: true,
+        preferences: true,
+        remindersEnabled: true,
+        recommendationsEnabled: true,
+        calendarVisibility: true,
+        profileVisibility: true,
+        profileComplete: true,
+        isDeactivated: true,
+        isVerifiedHost: true,
+        createdAt: true,
+        updatedAt: true
+      }
     });
 
     if (!user) {
