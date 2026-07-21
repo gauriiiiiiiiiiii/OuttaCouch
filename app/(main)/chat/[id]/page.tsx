@@ -57,9 +57,16 @@ export default function ChatThreadPage() {
     if (!id) {
       return;
     }
-    fetch("/api/socketio");
+    fetch("/api/socketio").catch(() => {
+      // Non-fatal: chat falls back to HTTP (loadMessages after POST) if the
+      // realtime socket can't be reached.
+    });
     const socket = io({ path: "/api/socketio" });
     socketRef.current = socket;
+    // Swallow connection errors — realtime is best-effort; the HTTP path keeps
+    // the thread correct. Without this, engine.io surfaces an unhandled
+    // rejection ([object Event]) when the socket can't connect.
+    socket.on("connect_error", () => {});
     socket.emit("join", id);
     socket.on("message", (message: Message) => {
       setMessages((prev) =>

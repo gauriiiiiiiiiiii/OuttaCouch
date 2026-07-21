@@ -24,6 +24,13 @@ type Stats = {
   pending: number;
 };
 
+type ContactEntry = { name?: string[]; tel?: string[] };
+type ContactsNavigator = Navigator & {
+  contacts: {
+    select: (props: string[], opts: { multiple: boolean }) => Promise<ContactEntry[]>;
+  };
+};
+
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -54,10 +61,10 @@ export default function ContactsPage() {
     }
     setSyncing(true);
     try {
-      const props = await (navigator as any).contacts.select(["name", "tel"], {
+      const props = await (navigator as ContactsNavigator).contacts.select(["name", "tel"], {
         multiple: true
       });
-      const mapped = (props as any[]).flatMap((entry: any) =>
+      const mapped = props.flatMap((entry: ContactEntry) =>
         (entry.tel ?? []).map((tel: string) => ({
           name: entry.name?.[0] ?? "Unknown",
           phone: tel
