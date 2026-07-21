@@ -160,15 +160,6 @@ export default function ExplorePage() {
       <SectionCard
         title="Explore"
         description="Swipe to decide."
-        headerAction={
-          <button
-            type="button"
-            onClick={() => router.push("/explore/swipe")}
-            className="rounded-full border border-neutral-300 px-3 py-1.5 text-xs font-semibold hover:bg-neutral-50"
-          >
-            Full-screen swipe
-          </button>
-        }
       >
         {loading ? (
           <p className="text-sm text-neutral-600">Loading events...</p>
@@ -216,7 +207,7 @@ export default function ExplorePage() {
                 <p className="font-semibold text-ink">Welcome to OuttaCouch!</p>
                 <p className="mt-1 text-neutral-600">
                   No events near you yet — here are some examples to explore. Once hosts
-                  create events in your area, they'll show up here ranked by distance and
+                  create events in your area, they&apos;ll show up here ranked by distance and
                   your interests.
                 </p>
                 <button
