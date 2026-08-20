@@ -1,933 +1,726 @@
-OUTTACOUCH
-
-1) Project Overview
-
-OUTTACOUCH is an event-first social connection platform designed to translate online discovery into offline relationships.
-The core problem is that traditional social apps prioritize engagement loops (feeds, likes, comments) instead of facilitating real-world interactions.
-OUTTACOUCH exists to make event attendance the primary signal of identity and trust, so connections form around shared experiences rather than superficial profile activity.
-
-Why this project exists:
-- People want meaningful connections but lack a reliable way to meet others around common interests.
-- Hosts need a streamlined way to list events, manage attendance, and validate entry.
-- Existing social graphs are noisy and do not reflect real-world context.
-
-Real-world use cases:
-- A user discovers a nearby music event, commits to attend, and later connects with other attendees.
-- A host creates an event (free or paid), manages capacity, and validates entry with QR scans.
-- A user builds a calendar-first profile that shows attended and hosted events as their social identity.
-- A user invites phone contacts via SMS or WhatsApp using a referral link; when the contact signs up, they are automatically connected.
-
-Target users:
-- Attendees who want to meet new people through shared events.
-- Hosts who need tools for event publishing, attendee management, and check-ins.
-- Communities that prefer real-world trust signals over follower counts.
-
-Key product promises:
-- Relevance: discovery is ranked by location, timing, and interest match.
-- Trust: connections are anchored in shared attendance.
-- Action: the UX pushes users from browsing to committing and showing up.
-
-
-2) System Design (High-Level + Low-Level)
-
-High-level architecture is a single Next.js 15 application that serves both the frontend and the backend API.
-The frontend uses the App Router with route groups: app/(auth) for authentication and onboarding flows, and app/(main) for the protected core product (explore, events, chat, profile, settings, notifications).
-The backend is implemented as Next.js API routes in app/api, and a Socket.io server bootstrapped through pages/api/socketio.ts for realtime chat.
-Core services: PostgreSQL via Prisma 7 ORM, Supabase Storage (image uploads), Twilio Verify (phone OTP), Twilio SMS/WhatsApp (invitations), SMTP/Nodemailer (email OTP and notifications), and qrcode.react (client-side QR rendering).
-Payments: no online payment processing. Paid events show a "contact the host directly" message. Tickets are still tracked and QR-validated for entry using scannable QR codes on the tickets page.
-
-Low-level design splits features into modules: authentication, event discovery and management, ticketing, connections, chat, memories, notifications, referrals/contacts, and storage.
-Each module has API endpoints that map directly to UI screens and actions. Data access flows through Prisma queries with explicit ownership checks at the endpoint level.
-Realtime messaging uses Socket.io rooms keyed by connectionId.
-Notification dispatch runs as a Vercel Cron job every 5 minutes, hitting GET /api/notifications/dispatch secured by CRON_SECRET.
-
-Data flow in a typical request:
-Client action -> App Router page -> fetch to app/api endpoint -> JWT validation -> Prisma query -> JSON response -> UI state update.
-
-Scalability considerations:
-- API routes are stateless and scale horizontally.
-- Prisma uses pooled DB connections (PgBouncer via Supabase); DIRECT_URL is used for migrations to bypass the pooler.
-- Event feed is capped to 50 results and scored in memory.
-- Socket.io is single-node and would require a Redis adapter for multi-node scaling.
-- Supabase Storage is scalable for media.
-
-Trade-offs:
-- Monolithic Next.js app simplifies development and deployment but couples API and UI and requires extra work for realtime scaling.
-- Event-first connections improve relevance and safety but reduce the speed of discovery compared to follower-based models.
-- No online payments keeps the system simpler and avoids PCI scope, but limits monetization.
-
-System overview (text diagram):
-Client (Next.js App Router UI)
-  -> API routes (app/api) for auth, events, tickets, chat, connections, notifications, referrals
-  -> Prisma 7 ORM -> PostgreSQL (Supabase, pooled via PgBouncer)
-  -> Supabase Storage for images
-  -> Twilio Verify for OTP / Twilio SMS+WhatsApp for invitations
-  -> Nodemailer/SMTP for email OTP and notifications
-Realtime:
-  Client <-> Socket.io server (pages/api/socketio.ts) <-> globalThis.io emitToRoom (lib/socketServer.ts)
-Cron:
-  Vercel Cron -> GET /api/notifications/dispatch (every 5 minutes)
-
-
-3) Tech Stack and Design Choices
-
-Frontend:
-- Next.js 15 App Router + React 18: unified routing, server/client component split, API colocation.
-- TypeScript: type-safe props, API payloads, and shared types across client and server.
-- Tailwind CSS with custom design tokens: ink, parchment, ocean, accent, bg, subtle, border.
-- Framer Motion: swipe and card interactions for event discovery.
-- Leaflet (react-leaflet): interactive maps for event location and picker.
-- Recharts: host analytics charts.
-- react-hook-form: efficient form state and validation.
-- Zustand: minimal global state (authStore, uiStore).
-
-Backend:
-- Next.js API routes: colocated API for rapid development and deployment.
-- NextAuth v4 Credentials + JWT: session management via JWT, getToken in API routes, getServerSession in some routes.
-- Prisma 7 with PrismaPg adapter: typed queries, migrations (using DIRECT_URL to bypass pooler), and transactional integrity.
-- PostgreSQL (Supabase): relational model fits events, tickets, and connections.
-- Socket.io: realtime chat, typing indicators, read receipts.
-
-Integrations:
-- Supabase Storage (admin key, server-side): scalable public media storage.
-- Twilio Verify: phone OTP for signup and password reset.
-- Twilio SMS + WhatsApp: referral invitation delivery.
-- Nodemailer/SMTP: email OTP and notification delivery.
-- Web Contact Picker API (navigator.contacts): device contact sync on supported mobile browsers.
-- qrcode.react: client-side QR code rendering for ticket validation.
-
-Design choices:
-- Monolithic Next.js app for faster iteration and simpler deployment.
-- App Router for core UI; pages/api used only to bootstrap Socket.io (App Router does not support persistent connections).
-- JWT claims (profileComplete, isDeactivated) enforce onboarding and access at the middleware level.
-- Server-side Supabase uploads avoid exposing storage service credentials to the client.
-- No online payments: removes PCI scope and Stripe dependency; paid events route hosts and attendees to settle directly.
-- Vercel Cron for notification dispatch: no separate worker process needed.
-
-
-4) Database Design
-
-Schema uses a relational model in PostgreSQL managed by Prisma 7.
-The datasource URL is a PgBouncer pooled connection string (DATABASE_URL) for runtime, and a direct connection string (DIRECT_URL) in prisma.config.ts for migrations.
-
-Models:
-
-User
-  - id, email, phone, passwordHash, displayName, bio, profilePhotoUrl
-  - city, lat, lng (location for discovery scoring)
-  - preferences (string array of interest categories)
-  - profileComplete, isDeactivated
-  - visibility (Visibility enum), approvalMode (ApprovalMode enum)
-  - Relations: hosts Events, EventAttendees, Tickets, Connections (sent/received), Messages, Notifications, NotificationSchedules, OtpTokens, Memories, EventSwipes, ContactImports, ContactInvitations, ReferralLinks
-
-Event
-  - id, title, description, category, location (string address), lat, lng
-  - startAt, endAt, maxAttendees, currentAttendees
-  - isFree, price (numeric), currency
-  - status (EventStatus enum), approvalMode
-  - hostId -> User
-  - Relations: EventImages, EventAttendees, NotificationSchedules, Tickets, shared Connections, Memories, EventSwipes
-
-EventImage
-  - id, eventId, url, order, isCover
-
-EventAttendee
-  - id, eventId, userId, status (AttendeeStatus enum)
-  - Unique index on (eventId, userId)
-
-Ticket
-  - id, eventId, userId, eventAttendeeId (optional link)
-  - paymentStatus (PaymentStatus enum)
-  - qrCode (unique), validatedAt
-  - quantity, amount, currency
-
-Connection
-  - id, user1Id, user2Id, status (ConnectionStatus enum)
-  - sharedEventId (optional, for event-based connections)
-  - requestedAt, acceptedAt
-
-Message
-  - id, connectionId, senderId, content, type (MessageType enum)
-  - sentAt, readAt
-
-Notification
-  - id, userId, title, body, link
-  - createdAt, readAt (null = unread)
-
-NotificationSchedule
-  - id, userId, eventId (optional), type, sendAt
-  - sent (boolean), createdAt
-  - Unique index on (userId, eventId, type, sendAt)
-
-OtpToken
-  - id, contact, otp (hashed for email), purpose (signup/reset)
-  - verifiedAt, usedAt, expiresAt, userId (optional)
-  - Index on (contact, purpose, usedAt)
-
-Memory
-  - id, userId, eventId, imageUrl, caption, createdAt
-
-EventSwipe
-  - id, userId, eventId, direction (like/pass), createdAt
-
-ContactImport
-  - id, userId, name, phone, status (pending/invited/registered)
-  - invitedAt, registeredAt, registeredUserId
-  - Unique on (userId, phone)
-
-ContactInvitation
-  - id, fromUserId, toPhone, channel (sms/whatsapp)
-  - status (pending/sent/clicked/registered)
-  - referralCode (unique, used as the join link code)
-  - sentAt, clickedAt, registeredUserId
-
-ReferralLink
-  - id, code (unique), fromUserId, type (contact/general)
-  - clicks, registrations, expiresAt
-
-Enums:
-- Visibility: private, connections, public
-- ApprovalMode: auto, manual
-- EventStatus: upcoming, ongoing, past, cancelled
-- AttendeeStatus: committed, attended, missed, waitlisted
-- ConnectionStatus: pending, accepted, declined, removed
-- MessageType: text, event_card, location
-- PaymentStatus: pending, paid, refunded, failed
-
-Indexing:
-- Unique on user.email, user.phone
-- Unique on ticket.qrCode
-- Unique on (eventId, userId) in EventAttendee
-- OtpToken indexed on (contact, purpose, usedAt)
-- NotificationSchedule unique on (userId, eventId, type, sendAt)
-- ContactImport unique on (userId, phone)
-- ContactInvitation indexed on referralCode (unique), fromUserId, toPhone
-- ReferralLink indexed on code (unique), fromUserId
-
-Data lifecycle:
-- Deactivated users keep their row but email/phone are cleared for re-signup safety.
-- Event deletion cascades to attendees, tickets, swipes, images, and memories links.
-- OTP tokens expire and are marked used/verified as part of each auth flow.
-- ContactInvitation progresses: pending -> sent -> clicked -> registered.
-- When a referred user registers, a Connection is auto-created with status "accepted" and both users receive a welcome Notification.
-
-Query optimization:
-- Event feed caps to 50 rows with computed scoring (distance, preferences, timing, popularity).
-- Connection suggestions filter on existing relationships and limit results.
-- Notifications limited to 50 by createdAt desc.
-- Transactions used for ticket creation and attendance updates to prevent race conditions.
-- Prisma select used to avoid over-fetching columns.
-
-
-5) Backend Deep Dive
-
-API style: REST endpoints under app/api. All request/response bodies are JSON except storage upload (multipart/form-data).
-
-Authentication endpoints:
-- POST /api/auth/send-otp { contact, type, purpose } -> { status }
-  Sends email OTP (Nodemailer) or phone OTP (Twilio Verify) for signup or reset.
-- POST /api/auth/verify-otp { contact, otp, purpose } -> { token }
-  Verifies the OTP; returns a signed token for use in the register/reset step.
-- POST /api/auth/register { contact, password, token, ref? } -> { status }
-  Creates the user, marks OTP used; if ref is a valid ContactInvitation.referralCode, completes referral: marks invitation "registered", updates ContactImport, creates Connection (accepted), sends welcome Notifications to both parties, increments ReferralLink.registrations.
-- POST /api/auth/reset-password { contact, password, token } -> { status }
-
-Event endpoints:
-- GET /api/events -> scored feed of up to 50 events
-- POST /api/events { title, category, location, lat, lng, startAt, endAt, maxAttendees, isFree, price, approvalMode } -> { id }
-- GET /api/events/:id -> full detail with host, images, attendee count, analytics (host only)
-- PATCH /api/events/:id -> update event (host only)
-- DELETE /api/events/:id -> delete event and cascade cleanup (host only)
-- POST /api/events/:id/commit -> create EventAttendee in a transaction, increment currentAttendees
-- GET /api/events/host -> hosted events for current user
-- POST /api/events/swipe { eventId, direction } -> record EventSwipe
-- POST/DELETE /api/events/:id/images -> upload or delete event gallery images (Supabase Storage, server-side)
-
-Ticket endpoints:
-- GET /api/tickets/me -> user's tickets
-- POST /api/tickets { eventId } -> create ticket (status pending; host confirms payment out-of-band)
-- GET /api/tickets/:id/qr -> QR code for entry validation
-- POST /api/tickets/validate { qr_code, event_id } -> validate QR at entry (host scanner)
-- POST /api/tickets/refund { ticketId } -> cancel ticket if within 48h window, set paymentStatus "refunded", decrement capacity
-
-Connection endpoints:
-- GET /api/connections -> accepted connections
-- GET /api/connections/discover -> users near current user
-- GET /api/connections/suggestions -> users with shared event attendance
-- GET /api/connections/requests -> pending incoming requests
-- POST /api/connections/request/:userId -> send connection request
-- GET/DELETE /api/connections/:id -> get or remove connection
-- PUT /api/connections/:id/accept -> accept request
-- PUT /api/connections/:id/decline -> decline request
-
-Chat endpoints:
-- GET /api/chat -> conversation list with last message and unread count
-- GET /api/chat/:connectionId -> message history (only connection members)
-- POST /api/chat/:connectionId { content, type } -> send message; emits via Socket.io
-- PUT /api/chat/:connectionId/read -> mark messages read
-
-Notification endpoints:
-- GET /api/notifications -> list of notifications (newest 50)
-- PUT /api/notifications/:id/read -> mark single notification read
-- PUT /api/notifications/read-all -> mark all read
-- GET /api/notifications/dispatch -> Vercel Cron handler (also accepts POST); finds pending NotificationSchedules, sends email/SMS, marks sent
-- POST /api/notifications/subscribe -> stub for future push notification device token registration
-
-Referral endpoints:
-- GET /api/referrals -> stats + invitations list + referral links for current user
-- POST /api/referrals/share { contactIds?, phones?, channel } -> sends SMS/WhatsApp invitation via Twilio; creates ContactInvitation + ReferralLink per contact
-- GET /api/referrals/:code -> validates referral code, returns referrer info, tracks click; used by /join page
-
-Contact endpoints:
-- GET /api/contacts/sync -> returns ContactImport list + stats (registered/invited/pending)
-- POST /api/contacts/sync { contacts: [{name, phone}] } -> upserts ContactImport rows; checks which phones are already registered users
-
-User endpoints:
-- GET/PATCH /api/users/me -> get or update current user profile
-- PATCH /api/users/me/location { lat, lng, city } -> update location
-- PATCH /api/users/me/privacy { visibility } -> update visibility
-- GET /api/users/:id -> get public profile (visibility-gated)
-
-Storage endpoint:
-- POST /api/storage/upload (multipart) -> uploads to Supabase Storage via admin key, returns public URL
-
-Authorization and security:
-- NextAuth JWT validated in all protected API routes via getToken.
-- Ownership enforced at endpoint level (event edit/delete checks hostId, chat access checks connection membership, ticket validation checks host role).
-- Middleware redirects unauthenticated users to /login, incomplete profiles to /onboarding/location, deactivated users to /deactivated.
-- Notification dispatch protected by dual auth: NOTIFICATION_DISPATCH_SECRET header or Vercel CRON_SECRET Bearer token.
-- OTP resend cooldown enforced by checking latest OTP timestamp; Twilio Verify adds server-side rate limits.
-- Supabase service role key never leaves the server.
-
-Error handling:
-- API routes return JSON { error: string } with status codes.
-- Common statuses: 400 bad request, 401 unauthorized, 403 forbidden, 404 not found, 409 conflict, 410 gone (deprecated endpoints), 500 server error.
-- Referral completion in /api/auth/register is wrapped in try/catch so a referral failure never blocks account creation.
-
-
-6) Frontend Deep Dive
-
-Component architecture:
-- UI primitives in components/ui: PageShell (page wrapper with back button and subtitle), SectionCard (card with title/description), NotificationBell (unread badge + link to /notifications).
-- Feature components in components/events: EventMap (Leaflet embed), MapPicker (interactive location selector), SwipeStack (card swipe for discovery).
-- Profile components in components/profile: ProfileHeader, CalendarGrid (event calendar view), MemoriesGrid (photo grid).
-
-Design system tokens (Tailwind):
-- ink: primary text / buttons
-- parchment: primary button text / soft backgrounds
-- ocean: brand accent for tags and active states
-- accent: secondary highlight
-- bg: page background
-- subtle: soft backgrounds
-- border: neutral border color
-
-Route structure:
-- / (home) -> marketing/landing or redirect to /explore if authenticated
-- /join?ref=CODE -> referral landing page; validates code via GET /api/referrals/:code, shows referrer info, links to /signup?ref=CODE
-- (auth) group: /login, /signup, /signup/verify, /signup/password, /reset, /reset/verify, /reset/password, /onboarding/profile, /onboarding/location
-- (main) group: /explore, /events/[id], /events/new, /events/manage, /events/manage/[id], /events/manage/[id]/edit, /events/manage/[id]/scanner, /connections, /chat, /chat/[id], /notifications, /profile, /profile/edit, /profile/calendar, /profile/memories, /profile/tickets, /settings, /settings/contacts, /settings/host, /settings/notifications, /settings/payments, /settings/privacy, /users/[id]
-
-State management:
-- Component-local state for forms, lists, and loading flags.
-- Zustand authStore and uiStore for cross-component flags.
-- No server state library for most features; simple fetch-on-mount pattern.
-- @tanstack/react-query is available but not yet wired globally.
-
-Signup flow with referral threading:
-1. /join?ref=CODE -> validates code, links to /signup?ref=CODE
-2. /signup reads ref from searchParams, appends &ref=CODE to verify redirect
-3. /signup/verify reads ref, appends to password redirect
-4. /signup/password reads ref, includes ref in register POST body
-5. /api/auth/register reads ref, completes referral after user creation (non-fatal)
-6. User is signed in and redirected to /onboarding/location
-
-Notification bell:
-- NotificationBell in (main)/layout.tsx sidebar header and mobile nav.
-- Fetches GET /api/notifications on mount, counts items where readAt is null, shows badge (max "9+").
-- Links to /notifications for full list.
-
-Contact sync and invite (/settings/contacts):
-- Uses Web Contact Picker API (navigator.contacts.select) to read device contacts.
-- Falls back gracefully with a browser support note if not available (desktop/older browsers).
-- POST /api/contacts/sync saves contacts; GET /api/contacts/sync returns list + stats.
-- Per-contact "Invite" button calls POST /api/referrals/share and optimistically updates status.
-- Filter tabs (All / On app / Invited / Pending) driven by stats row.
-
-Performance:
-- Dynamic import for map components to avoid SSR issues.
-- Images use next/image with fill and sizes for proper optimization.
-- Forms use react-hook-form to avoid unnecessary re-renders.
-
-
-7) End-to-End Flow Examples
-
-Free event commit:
-1. User taps "I'm in" on event detail page.
-2. UI calls POST /api/events/:id/commit.
-3. Server validates JWT, checks capacity, creates EventAttendee in a transaction, increments currentAttendees.
-4. Optional NotificationSchedule records are created for reminder dispatch.
-5. Response: { status: "committed" }.
-6. UI updates button state and shows confirmation.
-
-Paid event commit:
-1. Same flow as free event. No payment processing online.
-2. Event detail shows a note: "Paid event — arrange payment with the host directly."
-3. Ticket is created with paymentStatus: "pending"; QR is available after host confirms payment out of band.
-
-Referral signup:
-1. User A sends invite to phone +91XXXXXXXX via POST /api/referrals/share.
-2. Twilio sends SMS with link: https://app.com/join?ref=ABCD1234.
-3. Contact opens link, /join validates code via GET /api/referrals/:code, marks clicked.
-4. Contact taps "Create an account", lands on /signup?ref=ABCD1234.
-5. OTP flow proceeds; ref is threaded through verify and password steps.
-6. POST /api/auth/register creates user, completes referral: marks invitation "registered", creates Connection(accepted), creates Notifications for both users, increments ReferralLink.registrations.
-7. Both users are now connected on first login.
-
-Chat message:
-1. User opens chat at /chat/:connectionId.
-2. Page connects Socket.io client to room `connection:${connectionId}`.
-3. User sends message; POST /api/chat/:connectionId creates Message in DB.
-4. API emits "new_message" to the room via globalThis.io.emitToRoom.
-5. Both participants receive the message in real time without polling.
-
-Notification dispatch (cron):
-1. Vercel Cron calls GET /api/notifications/dispatch every 5 minutes with Bearer CRON_SECRET.
-2. Handler queries NotificationSchedules where sendAt <= now and sent = false.
-3. For each schedule, sends email (Nodemailer) or SMS (Twilio), creates Notification record, marks schedule sent.
-
-
-8) DevOps and Deployment
-
-Hosting: Vercel (recommended) for Next.js with cron support, or any Node hosting. PostgreSQL on Supabase. Supabase Storage for media.
-
-Environment variables (all listed in .env.example):
-- DATABASE_URL: Supabase PgBouncer pooled connection string
-- DIRECT_URL: Supabase direct connection string (used by prisma.config.ts for migrations)
-- DATABASE_SSL: true
-- EMAIL_ALLOW_SELF_SIGNED: false
-- NEXTAUTH_SECRET, NEXTAUTH_URL
-- NEXT_PUBLIC_APP_URL
-- EMAIL_USER, EMAIL_PASS, EMAIL_FROM (SMTP/Nodemailer)
-- RESEND_API_KEY, RESEND_FROM (optional Resend integration)
-- TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID
-- TWILIO_PHONE_NUMBER, TWILIO_WHATSAPP_NUMBER, DEFAULT_PHONE_COUNTRY_CODE
-- NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
-- CRON_SECRET (Vercel Cron authentication)
-- NOTIFICATION_DISPATCH_SECRET (manual dispatch authentication)
-
-Migrations:
-- prisma.config.ts uses DIRECT_URL (bypasses PgBouncer, required for schema migrations).
-- Run: npx prisma migrate deploy in production CI.
-- Run: npx prisma generate after schema changes.
-
-Cron:
-- vercel.json configures GET /api/notifications/dispatch to run every 5 minutes.
-- Can also be triggered manually with the x-notification-secret header.
-
-CI/CD recommended steps:
-1. Lint and typecheck (next lint, tsc --noEmit).
-2. prisma generate.
-3. next build.
-4. prisma migrate deploy on production.
-
-
-9) Performance Optimization
-
-- Event feed capped to 50 results with in-memory scoring (distance + preferences + timing + popularity + connections).
-- Connection suggestions and discover endpoints limit result sets.
-- Notifications limited to 50 by createdAt desc.
-- Media stored in Supabase Storage; DB stores only URLs, no blobs.
-- Dynamic import for Leaflet map components prevents SSR hydration issues.
-- Prisma select used throughout to avoid over-fetching columns.
-- PgBouncer (DATABASE_URL) reduces connection overhead at runtime.
-
-Future caching:
-- Redis or edge cache for event feed with short TTL (1-5 minutes).
-- CDN caching for public Supabase Storage images.
-- Redis adapter for Socket.io to enable multi-node deployment.
-
-
-10) Security
-
-- SQL injection: Prisma parameterized queries.
-- Passwords: bcrypt hashed.
-- OTPs: Twilio Verify for phone (server-side), hashed storage for email OTPs.
-- Sessions: JWT validated in middleware and API routes.
-- Ownership: all mutating endpoints verify the requesting user owns the resource.
-- Storage: Supabase service role key used only server-side; client never sees it.
-- Cron: dual-auth (NOTIFICATION_DISPATCH_SECRET or Vercel CRON_SECRET Bearer).
-- Referral: completion is non-fatal and does not expose user data to the referrer beyond a welcome notification.
-- Profile visibility: GET /api/users/:id checks Visibility enum before returning data.
-
-Hardening (recommended):
-- Rate limiting per IP/user for OTP and login endpoints.
-- Secure HTTP headers (CSP, HSTS, X-Frame-Options, Referrer-Policy) via next.config headers.
-- Audit logs for critical actions (deactivate, refund, event delete).
-
-
-11) Testing Strategy
-
-Recommended unit tests:
-- normalizeContact (phone/email normalization edge cases)
-- Event scoring function (distance, preferences, timing weights)
-- OTP expiry and verification logic
-
-Recommended integration tests:
-- Full OTP signup flow (send -> verify -> register)
-- Referral flow (invite -> click -> register -> connection created)
-- Event commit with capacity enforcement (concurrent requests, 409 on full)
-- Ticket refund window enforcement (48h boundary)
-- Notification dispatch (schedule created -> dispatch runs -> sent flag set)
-
-Recommended E2E tests:
-- Signup and onboarding
-- Event create, commit, and scanner validation
-- Chat send and receive via Socket.io
-- Referral invite and referred-user signup
-
-
-12) Challenges and Solutions
-
-- Realtime chat in App Router: App Router does not support persistent TCP connections.
-  Solution: Bootstrap Socket.io in pages/api/socketio.ts (legacy pages handler) and expose a global emitToRoom helper via globalThis.io so app/api chat routes can emit without HTTP round-trips.
-
-- Referral code lost through multi-step signup: The join page linked to /signup without the ref query param, breaking the referral chain.
-  Solution: Thread ref through every URL step (join -> signup -> verify -> password) and include it in the register POST body. Completion is inline in the register handler (non-fatal).
-
-- PgBouncer vs direct for migrations: Prisma cannot run schema migrations through PgBouncer transaction pooler (prepared statements are not supported in that mode).
-  Solution: prisma.config.ts exposes directUrl: env('DIRECT_URL') pointing to the direct Supabase connection. Runtime queries use DATABASE_URL (pooled); migrations use DIRECT_URL.
-
-- Notification dispatch without a worker: No separate background process available on Vercel.
-  Solution: vercel.json cron calls GET /api/notifications/dispatch every 5 minutes. Dual-auth allows both Vercel-signed requests and manual calls in development.
-
-- Contact sync on desktop browsers: navigator.contacts (Web Contact Picker API) is only available on Chrome Android and Safari iOS 16+.
-  Solution: Feature-detect at runtime with "contacts" in navigator; show a descriptive fallback message on unsupported environments rather than crashing.
-
-- Event payments without Stripe: Stripe was removed to reduce scope and PCI complexity.
-  Solution: Paid events are committed identically to free events. The event detail page shows a "contact the host directly" note. Tickets track paymentStatus for the host to update manually.
-
-
-13) Improvements and Future Scope
-
-- Pagination and server-side filtering for event feed (currently in-memory scoring on 50 rows).
-- Redis adapter for Socket.io to support horizontal scaling.
-- Push notifications: device token registration (stub at /api/notifications/subscribe) and Web Push / FCM delivery.
-- Admin and moderation tooling for events and users.
-- Event analytics pipeline for host dashboard (attendance rate, swipe-to-commit ratio).
-- Group chat (event-scoped rooms, not just 1:1 connections).
-- In-app payment request flow (host sends payment link, attendee pays via external provider).
-- Redis or edge caching for event feed and connection suggestions.
-- Full E2E test suite with Playwright.
-
-
-14) Interview Questions and Strong Answers
-
-1. Why choose Next.js App Router?
-   Unified full-stack routing, SSR/CSR flexibility per route, API colocation, and built-in middleware for auth checks at the edge.
-
-2. How is Socket.io bootstrapped in an App Router project?
-   pages/api/socketio.ts is a legacy Next.js handler that supports persistent upgrade connections. The server instance is stored in globalThis.io and accessed from app/api routes via a thin emitToRoom helper in lib/socketServer.ts.
-
-3. How do you prevent duplicate EventAttendee rows?
-   A unique index on (eventId, userId) in the database; the Prisma transaction that creates the attendee reads currentAttendees inside the transaction, returns 409 if full, and increments atomically.
-
-4. How do you enforce event capacity under concurrency?
-   Prisma transaction wraps the attendee count read and the create; if two requests race, one will fail the capacity check or hit the unique constraint. A 409 is returned to the client.
-
-5. How do you secure OTP flows?
-   Email OTPs are hashed before storage. Twilio Verify handles phone OTPs server-side. All tokens have an expiry and a usedAt flag. Resend cooldown is enforced by checking the most recent OTP timestamp.
-
-6. How is chat authorization enforced?
-   GET and POST /api/chat/:connectionId query the Connection row to verify the requesting userId is user1Id or user2Id before reading or writing messages.
-
-7. How does the referral flow work end-to-end?
-   Invitation is sent via Twilio SMS with a unique referralCode. The /join page validates the code and passes it through the entire signup URL chain. On registration, the register API finds the ContactInvitation by code, updates its status, creates an accepted Connection, notifies both users, and increments ReferralLink stats — all in a non-fatal try/catch so a referral failure never blocks signup.
-
-8. How do you handle event discovery relevance?
-   Scoring combines: inverse distance (closer events score higher), preference match (category overlap), time-to-start (events soon score higher), popularity (normalized attendee count), and connection signal (attendees you are connected to).
-
-9. Why use DIRECT_URL and DATABASE_URL separately?
-   DATABASE_URL points to the PgBouncer pooler for efficient runtime connection management. DIRECT_URL bypasses the pooler for prisma migrate deploy, which requires persistent connections and prepared statements.
-
-10. How do you scale Socket.io?
-    Add a Redis adapter (socket.io-redis) so all Node instances share a pub/sub channel. Combine with sticky sessions or move to a dedicated realtime service.
-
-11. How are images uploaded securely?
-    Server-side multipart upload to Supabase Storage using the service role key. The client never touches storage credentials; it only receives the returned public URL.
-
-12. How does notification dispatch work?
-    NotificationSchedule rows are created when users commit to events. Vercel Cron calls GET /api/notifications/dispatch every 5 minutes. The handler queries unsent schedules where sendAt <= now, sends email or SMS, creates Notification records, and marks schedules sent.
-
-13. How do you enforce onboarding?
-    middleware.ts checks the JWT profileComplete claim. If false and the route is not in the onboarding group, the user is redirected to /onboarding/location.
-
-14. What prevents access by deactivated users?
-    JWT includes isDeactivated. Middleware checks it and redirects deactivated users. The claim is refreshed from DB on NextAuth JWT callback.
-
-15. How do you optimize DB queries?
-    Limit result sets, use Prisma select to fetch only required fields, rely on indexes for frequent filters (userId, eventId, referralCode, contact), and use PgBouncer for connection pooling.
-
-16. How are refunds handled without Stripe?
-    POST /api/tickets/refund validates ownership and a 48-hour cancellation window, sets paymentStatus to "refunded", deletes the EventAttendee, and decrements currentAttendees. The actual money movement is handled out-of-band between host and attendee.
-
-17. How would you add caching?
-    Cache the event feed and connection suggestions in Redis with a 1-5 minute TTL keyed by userId+location. Invalidate on new event creation or significant location change.
-
-18. How do you ensure data privacy for user profiles?
-    GET /api/users/:id checks the target user's visibility setting: public returns full profile, connections returns profile only if a Connection(accepted) exists between requester and target, private returns 404.
-
-19. How do you prevent race conditions in ticket creation?
-    A Prisma transaction reads current capacity and creates the ticket atomically. A unique constraint on qrCode also prevents duplicate tickets.
-
-20. How would you add push notifications?
-    Register device tokens at POST /api/notifications/subscribe. Store tokens on the User row. In the dispatch handler, add a Web Push or FCM send alongside the existing email/SMS path. Fall back to in-app Notification row if push fails.
-
-
-15) Known Bugs Fixed (2026-06-06 Session)
-
-The following bugs were identified and fixed during the 2026-06-06 development session.
-
---- Environment / Infrastructure ---
-
-1. TLS cert chain rejection (Prisma/pg on Windows)
-   Symptom: Prisma threw "Error opening a TLS connection: self-signed certificate in certificate chain" on every DB query.
-   Root cause: Supabase's cert chain is not trusted by Node.js built-in TLS on Windows by default.
-   Fix: Added DATABASE_SSL_INSECURE=true to .env; lib/prisma.ts reads this flag and sets ssl: { rejectUnauthorized: false } on the pg Pool.
-
-2. Supabase JS SDK fetch failures causing page slowness
-   Symptom: All pages took 5-30 seconds to load; server logs showed repeated "TypeError: fetch failed - unable to verify the first certificate".
-   Root cause: Supabase JS SDK uses Node.js native fetch for internal REST API calls; same cert trust issue on Windows.
-   Fix: Added at the top of next.config.mjs (dev-only guard):
-     if (process.env.NODE_ENV !== "production") {
-       process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-     }
-   Result: Warmed-up response times — homepage 120ms, auth session 163ms, events API 755ms.
-
-3. DATABASE_URL / DIRECT_URL had [YOUR-PASSWORD] placeholder
-   Symptom: Prisma threw P1000 Authentication failed.
-   Fix: Filled in actual Supabase DB password in both connection strings.
-
---- Middleware ---
-
-4. /notifications and /users/:path* not protected
-   Symptom: Unauthenticated users visiting /notifications or /users/[id] saw blank pages instead of being redirected to login.
-   Fix: Added both paths to the matcher array in middleware.ts.
-   Current matcher:
-     "/explore", "/events/:path*", "/connections", "/chat/:path*",
-     "/profile/:path*", "/settings/:path*", "/notifications", "/users/:path*", "/onboarding/:path*"
-
---- Page Bugs ---
-
-5. Privacy settings page always showed "public" on load
-   Symptom: /settings/privacy always defaulted to "public" regardless of actual stored value.
-   Root cause: Component initialized with useState("public") and never fetched the real value.
-   Fix: Added useEffect that fetches GET /api/users/me on mount and sets profileVisibility from data.user.profileVisibility.
-   Also added loading state to disable the select and button while fetching.
-
-6. Memories page crash on mount
-   Symptom: /profile/memories crashed with "Cannot read properties of undefined (reading 'map')".
-   Root cause: Component type defined attendedEvents field, but GET /api/users/me returns privateCalendar.
-   Fix: Renamed attendedEvents -> privateCalendar everywhere in the type definition and all JSX usages.
-
-7. Paid event "Accept" button showed "failed"
-   Symptom: Clicking "Accept" on a paid event displayed an error state ("failed") because the commit API returns 403 for paid events.
-   Root cause: handleCommit called POST /api/events/:id/commit unconditionally; the API intentionally rejects paid events.
-   Fix (handleCommit): Added early return for paid events — sets commitStatus to "contact-host" without hitting the API.
-   Fix (JSX button): Button label now shows "Contact host to register" when commitStatus === "contact-host"; button is disabled; raw status string is not shown.
-
-8. Chat page missing scroll, Enter key, and message overflow
-   Symptom: New messages did not scroll into view; Enter key had no effect; long message threads overflowed the page.
-   Fixes:
-   - Added messagesEndRef with a useEffect that scrolls it into view on every messages update.
-   - Added onKeyDown handler on the input: Enter (without Shift) calls sendMessage().
-   - Changed message container from unbounded div to h-96 overflow-y-auto.
-
-9. Chat sendMessage silent failure when Socket.io not initialized
-   Symptom: Messages sent via the chat input did not appear until the page was refreshed if the Socket.io globalThis.io was not initialized on the current Node instance.
-   Root cause: POST /api/chat/:id saves the message to DB and then calls emitToRoom; if globalThis.io is null the emit silently does nothing and the sender's UI never gets the new message.
-   Fix: After a successful POST, sendMessage now calls loadMessages() to re-fetch the thread from DB, guaranteeing the sender sees their message regardless of socket state.
-
-10. Calendar page crash on mount
-    Symptom: /profile/calendar crashed with "Cannot read properties of undefined (reading 'some')".
-    Root cause: Type CalendarResponse had attendedEvents field; GET /api/users/me returns privateCalendar. Same field name mismatch as the memories page bug (item 6 above) — it was a second occurrence in a different file.
-    Fix: Renamed type and all usages (attendedEvents → privateCalendar) in app/(main)/profile/calendar/page.tsx.
-
-11. Tickets page showed QR code as raw text string
-    Symptom: /profile/tickets showed "QR: <uuid>" as plain text — not scannable.
-    Root cause: Page had no QR rendering; it just printed ticket.qrCode as a string.
-    Fix: Installed qrcode.react; replaced raw text with an expandable QRCodeSVG (192×192) per ticket. Each ticket row now has a "Show QR / Hide QR" toggle that expands to the scannable image with a "Show this QR code at the door" label.
-
---- What was intentionally NOT changed ---
-- Paid events still go through the same commit flow (creating EventAttendee) as free events; the "contact host" UI message is cosmetic. Ticket paymentStatus is set to "pending" for the host to resolve out-of-band. This is by design (no online payment processing).
-- lib/resend.ts was deleted in a prior session (Resend integration removed). RESEND_API_KEY and RESEND_FROM remain in .env.example as dead vars and are harmless.
-- lib/stripe.ts, lib/socket.ts, app/api/tickets/create-intent, app/api/tickets/confirm, app/api/webhooks/stripe were deleted in a prior session when the Stripe integration was removed.
-
-
-16) Current Project State (2026-06-06, updated after full code audit)
-
-Running:
-- Next.js dev server starts cleanly with `npm run dev`.
-- Database connection works (Supabase + PgBouncer pooler) with DATABASE_SSL_INSECURE=true.
-- All protected routes redirect unauthenticated users to /login.
-- Incomplete profiles redirect to /onboarding/profile.
-- Deactivated users redirect to /login?deactivated=1.
-- qrcode.react installed for client-side QR rendering on the tickets page.
-- `npx tsc --noEmit` produces zero TypeScript errors.
-
-Pages confirmed working (all bugs fixed, no runtime crashes):
-- /explore — event feed with scoring and swipe view
-- /events/[id] — event detail, gallery, map, host card, commit button (free + paid "contact host")
-- /events/new — event creation form with map picker
-- /events/manage — hosted events list
-- /events/manage/[id] — host analytics and management
-- /events/manage/[id]/edit — edit form
-- /events/manage/[id]/scanner — QR scanner for entry validation
-- /connections — accepted connections, suggestions, requests (accept/decline)
-- /chat — conversation list with search
-- /chat/[id] — message thread with auto-scroll, Enter to send, socket + HTTP fallback
-- /notifications — notification list, mark-read, read-all
-- /profile — profile overview with stats, calendar grid, attended/hosted/connections sections
-- /profile/edit — edit profile photo, bio, preferences
-- /profile/calendar — calendar view
-- /profile/memories — photo upload, event linking, gallery
-- /profile/tickets — ticket list with expandable QR code per ticket
-- /settings — settings hub with account deactivation
-- /settings/contacts — device contact sync + SMS/WhatsApp invite
-- /settings/host — links to manage events and create event
-- /settings/notifications — reminders and recommendations toggles
-- /settings/payments — explains offline payment arrangement
-- /settings/privacy — profile visibility (loads and saves actual stored value)
-- /users/[id] — public profile, timeline, hosted events, public calendar, connect/message
-- /join?ref=CODE — referral landing page
-- /login, /signup, /signup/verify, /signup/password
-- /reset, /reset/verify, /reset/password
-- /onboarding/profile, /onboarding/location
-- /explore/swipe — full-screen swipe mode
-
-Known limitations:
-- Socket.io works only in single-Node deployments. Multi-instance deployment requires Redis adapter.
-- Web Contact Picker API (/settings/contacts) is only available on Chrome Android and Safari iOS 16+; desktop falls back to a text message.
-- Notification push (web push / FCM) is stubbed at POST /api/notifications/subscribe but not fully implemented.
-- Event feed scoring is in-memory on top 50 rows; no pagination.
-
-Security hardening applied (see section 17):
-- Rate limiting on OTP send, OTP verify, register, and login endpoints.
-- CSRF origin checks on auth routes and event creation/swipe endpoints.
-- HTTP security headers (X-Content-Type-Options, X-Frame-Options, HSTS, Referrer-Policy, Permissions-Policy).
-- Strict file upload validation (MIME + extension whitelist, 10 MB cap).
-
-UX improvements applied (see section 18):
-- Explore empty state with welcome banner and CTA.
-- NotificationBell polls every 30 seconds.
-- Chat list: clearer section headers, CTA when no connections.
-- Ticket payment status badge (pending/paid/refunded/failed).
-- Event delete inline confirmation with attendee count.
-- Cancel attendance button on event detail page.
-- Full-screen swipe mode at /explore/swipe.
-- Onboarding order fixed: profile → location.
-
-Full code audit bugs fixed (see section 20):
-- Event delete FK violation on NotificationSchedule.
-- Notification read IDOR.
-- Event feed exposing non-public events.
-- Duplicate EventSwipe rows.
-- QR code re-scanning.
-- Dead /api/auth/login route removed.
-- prisma.config.ts TypeScript error resolved.
-- CalendarGrid day-header alignment fixed.
-- CSRF protection added to POST /api/events and POST /api/events/swipe.
-
-Remaining future work:
-- Full push notification delivery (register device tokens, deliver via Web Push or FCM).
-- Redis adapter for Socket.io to support horizontal scaling.
-- Pagination and server-side filtering for event feed.
-- Admin / moderation tooling.
-- Full E2E test suite (Playwright).
-- CSP (Content-Security-Policy) header (omitted to avoid breaking inline styles/Leaflet).
-
-
-17) Security Hardening (2026-06-06 Session)
-
-The following security issues were identified and fixed.
-
-1. No rate limiting on auth endpoints
-   Risk: Unlimited OTP sends, OTP guesses, login attempts = brute-force attack surface.
-   Fix: Created lib/rateLimit.ts — in-memory fixed-window rate limiter.
-   Applied to:
-   - POST /api/auth/send-otp: 5 requests / 15 minutes per IP
-   - POST /api/auth/verify-otp: 15 requests / 15 minutes per IP (on top of existing 5-attempt DB lock)
-   - POST /api/auth/register: 5 requests / 1 hour per IP
-   - authorize() in authOptions.ts: 10 login attempts / 15 minutes per IP
-
-2. No CSRF protection
-   Risk: A malicious page could trigger state-changing API calls from a victim's browser session.
-   Fix: Created lib/csrf.ts — compares the Origin header against NEXTAUTH_URL/NEXT_PUBLIC_APP_URL.
-   Applied to all CSRF-sensitive POST endpoints in auth routes.
-
-3. Missing HTTP security headers
-   Fix: Added to next.config.mjs via headers() applied to /:path*:
-   - X-Content-Type-Options: nosniff
-   - X-Frame-Options: SAMEORIGIN
-   - Referrer-Policy: strict-origin-when-cross-origin
-   - Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=()
-   - Strict-Transport-Security: max-age=31536000; includeSubDomains
-
-4. Weak file upload validation
-   Risk: An attacker could upload a PHP/JS file disguised as an image.
-   Fix: Added to POST /api/storage/upload:
-   - 10 MB size cap
-   - MIME type whitelist: jpeg, png, gif, webp, avif, heic, heif
-   - File extension whitelist: same set
-   Both checks must pass; either failure returns 400.
-
-5. Map container crash (Leaflet HMR)
-   Symptom: "Map container is already initialized" error on hot reloads in /events/[id].
-   Root cause: HMR reuses DOM nodes but Leaflet's _leaflet_id persists; react-leaflet's MapContainer cannot detect this.
-   Fix: Rewrote EventMap and MapPicker to use raw L.map() inside useEffect instead of react-leaflet's MapContainer.
-   The effect explicitly deletes node._leaflet_id before creating a new L.map instance.
-
-
-18) UX / Missing Flow Fixes (2026-06-06 Session)
-
-The following UX gaps and missing flows were identified and implemented.
-
-1. Explore page empty state
-   Problem: New users with no events nearby saw a blank card with no explanation.
-   Fix: Added a welcome banner ("Welcome to OuttaCouch!") when events.length === 0 and no search query.
-   Banner explains the product and includes a "Host your own event" CTA button.
-   Empty search now shows "No events match your search." instead of generic "No events found."
-
-2. NotificationBell: no real-time update
-   Problem: New connection requests and notifications only appeared after page refresh.
-   Fix: Added a 30-second polling interval (setInterval / clearInterval) to NotificationBell.tsx so the
-   unread badge refreshes without a reload. Notification DB records are already created by existing API routes.
-
-3. Chat list UX
-   Problem: "Connections" section header was unclear; no CTA when a user has no connections.
-   Fix: Renamed section header to "Start a chat" with descriptive subtext.
-   When no connections: shows an info box with a "Find people to connect with" button linking to /connections.
-   When connections exist but no chats: shows "tap a connection above to say hello" hint text.
-
-4. Ticket status badge
-   Problem: Tickets listed on /profile/tickets showed quantity and price but no payment status indicator.
-   Fix:
-   - Added paymentStatus to GET /api/tickets/me response.
-   - Added PaymentBadge component in the tickets page: colored chips
-     (paid=green, pending=yellow, refunded=blue, failed=red) shown inline next to event title.
-
-5. Event delete confirmation
-   Problem: "Delete event" used window.confirm() — a browser-native dialog with no context about impact.
-   Fix: Replaced with inline confirmation UI in the host dashboard.
-   Clicking "Delete event" reveals an inline warning showing the attendee count (e.g. "3 attendees will be affected").
-   Two buttons: "Yes, delete" and "Cancel". Confirmation state resets on cancel or error.
-
-6. Cancel attendance
-   Problem: Users who committed to a free event had no way to cancel their attendance.
-   Fix:
-   - Added DELETE /api/events/[id]/commit — removes EventAttendee, decrements currentAttendees.
-   - Updated GET /api/events/[id] to return isCommitted: boolean (true if requesting user has an attendee record).
-   - Event detail page initializes commitStatus to "committed" if isCommitted is true (so return visits show the right state).
-   - Added "Cancel attendance" link below the confirmed button (only for free events, only when committed).
-
-7. Dedicated swipe mode page
-   Problem: The swipe interface was embedded inside the explore page with no immersive option.
-   Fix: Created /explore/swipe — a standalone full-screen swipe page.
-   - No PageShell nav overhead; minimal header with a "← Back" link.
-   - Full-screen centered SwipeStack with empty-state handling.
-   - Added "Full-screen swipe" button in the explore page's section card header.
-   - SectionCard component updated to accept optional headerAction prop.
-
-8. Onboarding order: profile before location
-   Problem: New users were sent to /onboarding/location first, then /onboarding/profile — but
-   setting a name/photo before asking for location makes more sense UX-wise.
-   Fix:
-   - signup/password PasswordClient.tsx: after registration and sign-in, redirects to /onboarding/profile.
-   - /onboarding/profile: saves name/photo/bio/preferences via PUT /api/users/me (no profileComplete flag);
-     redirects to /onboarding/location; button label updated to "Next: set location".
-   - /onboarding/location: after saving location, sets profileComplete: true (via location API update +
-     session update), redirects to /explore.
-   - PUT /api/users/me/location: now accepts optional profileComplete: true in the request body.
-   New onboarding flow: Register → Profile (name/photo/bio) → Location → Explore.
-
-
-19) Elevator Pitch
-
-OUTTACOUCH is an event-first social platform that uses real attendance to drive meaningful connections.
-Users discover nearby events, commit to attend, and automatically connect with people they meet in person.
-Hosts create and manage events with tools for attendee tracking, QR check-in, and gallery management.
-Friends are invited via phone contacts using a referral system — when they sign up through the link, they are instantly connected to the person who invited them.
-The system is built on Next.js 15 with Prisma and PostgreSQL, Supabase for media storage, Twilio for OTP and SMS invitations, Socket.io for realtime chat, and Vercel Cron for notification dispatch.
-The focus is on relevance, real-world trust, and a clean user experience that moves people from browsing to actually showing up.
-
-
-20) Full Code Audit (2026-06-06, Continuation Session)
-
-A file-by-file audit of every route, page, component, and config file was performed. Nine bugs were identified and fixed.
-
---- Data Integrity ---
-
-1. Event delete: FK violation on NotificationSchedule
-   File: app/api/events/[id]/route.ts — DELETE handler
-   Symptom: Deleting an event with pending notification schedules threw a PostgreSQL FK constraint violation.
-   Root cause: NotificationSchedule.eventId is a non-nullable FK to Event with no onDelete clause (defaults to RESTRICT in PostgreSQL). The delete transaction did not clean up NotificationSchedule rows before deleting the Event row.
-   Fix: Added prisma.notificationSchedule.deleteMany({ where: { eventId: event.id } }) to the $transaction array, before the event.delete() call.
-
-2. Event feed: non-public events visible to everyone
-   File: app/api/events/route.ts — GET handler
-   Symptom: The event feed returned events with visibility "connections" or "private" to all callers, including unauthenticated users.
-   Root cause: No visibility filter on the Prisma findMany or count() calls.
-   Fix: Added where: { visibility: "public" } to both prisma.event.findMany and prisma.event.count.
-
-3. Duplicate EventSwipe rows
-   File: app/api/events/swipe/route.ts — POST handler
-   Symptom: Every swipe call created a new row, regardless of whether the user had already swiped the same event. Repeated swipes accumulated duplicate rows.
-   Root cause: Handler always called prisma.eventSwipe.create without checking for an existing record.
-   Fix: Replaced unconditional create with a findFirst + conditional update-or-create pattern.
-
-4. QR code re-scanning (ticket re-entry)
-   File: app/api/tickets/validate/route.ts — POST handler
-   Symptom: Scanning an already-validated QR code succeeded and returned "validated" again, allowing re-entry.
-   Root cause: No check on the qrValidated field before performing the update.
-   Fix: Added guard — if ticket.qrValidated is true, return 409 { error: "Ticket already validated" } immediately.
-
---- Security ---
-
-5. Notification read IDOR
-   File: app/api/notifications/[id]/read/route.ts — PUT handler
-   Symptom: Any authenticated user could mark any other user's notification as read by supplying an arbitrary notification ID.
-   Root cause: Handler called prisma.notification.update without verifying the notification belonged to the requesting user.
-   Fix: Added prisma.notification.findUnique before the update; return 404 if not found or if notification.userId !== token.sub.
-
-6. Dead /api/auth/login route
-   File: app/api/auth/login/route.ts (deleted)
-   Symptom: Standalone POST /api/auth/login route existed but was never called by the frontend (frontend uses NextAuth signIn). It created no session, had no CSRF protection, and had no rate limiting.
-   Risk: The route was reachable dead code with no security controls — a passive attack surface with no business value.
-   Fix: Deleted app/api/auth/login/route.ts and its parent directory.
-
-7. CSRF protection missing on event creation and event swipe
-   Files: app/api/events/route.ts (POST), app/api/events/swipe/route.ts (POST)
-   Symptom: Both endpoints accepted cross-origin requests with a valid session cookie.
-   Root cause: isSameOrigin check from lib/csrf.ts was applied to auth routes but not to these two mutation endpoints.
-   Fix: Added import { isSameOrigin } from "@/lib/csrf" and an early-return guard returning 403 at the top of both POST handlers.
-
---- Infrastructure / TypeScript ---
-
-8. prisma.config.ts TypeScript error
-   File: prisma.config.ts
-   Symptom: npx tsc --noEmit reported "Object literal may only specify known properties, and 'directUrl' does not exist in type '{ url?: string | undefined; shadowDatabaseUrl?: string | undefined; }'".
-   Root cause: directUrl is not a valid property in the @prisma/config defineConfig datasource type in Prisma 7. The property had been added under the assumption it matched the schema.prisma datasource block syntax, but the TypeScript config API does not accept it.
-   Fix: Removed the directUrl line from prisma.config.ts. The DIRECT_URL env var is still referenced in .env and used by prisma migrate deploy via the schema.prisma datasource block (not the TypeScript config).
-   Result: tsc --noEmit now exits with zero errors.
-
---- UI ---
-
-9. CalendarGrid: day-header row outside the inner grid container
-   File: components/profile/CalendarGrid.tsx
-   Symptom: The "Sun Mon Tue Wed Thu Fri Sat" day-header row was rendered in a grid grid-cols-7 that was a sibling of the inner rounded-2xl border card, not a child. The header grid and the day-button grid were two separate elements with separate padding, so column alignment broke visually.
-   Root cause: The day-header div was placed between the outer container and the inner card instead of inside the inner card before the days grid.
-   Fix: Moved the day-header grid inside the inner rounded-2xl border container, directly above the day-button grid. Also removed the duplicate month/year heading that existed only inside the inner card (the outer container already displayed it). Both grids now share the same padding context and column alignment is correct.
-
---- Post-audit state ---
-- npx tsc --noEmit: zero errors.
-- All 9 bugs resolved.
-- No breaking changes to API contracts or DB schema.
+#####################################################################
+#  OUTTACOUCH — MASTER REFERENCE GUIDE                               #
+#  Event-first social platform · single Next.js 15 monolith · solo  #
+#####################################################################
+
+HOW TO USE THIS DOCUMENT
+  One source of truth: every fact appears ONCE. It is both a technical
+  reference and interview-prep material. Four parts:
+    PART A — QUICK REFERENCE   facts, stack, architecture, data model, API index, env
+    PART B — HOW IT WORKS      per-subsystem walkthroughs (flow · hard part · gotcha)
+    PART C — JUDGMENT          decisions/trade-offs, security (ACTUAL state), scale, history
+    PART D — INTERVIEW DELIVERY pitch, STAR, Q&A, rehearsal
+  Cross-references use §. Nothing is repeated between parts — if it's in
+  the API index (A5) it is not re-listed in the walkthroughs (B).
+
+ACCURACY NOTE (read once):
+  The security section (C2) reflects the ACTUAL code as verified file by
+  file. Some previously-documented "fixes" were NOT applied in code and
+  are listed as OPEN here — notably passwordHash exposure on /api/users/me
+  and the chat read IDOR. Do not claim a fix you cannot show in the repo.
+
+
+#####################################################################
+PART A — QUICK REFERENCE
+#####################################################################
+
+A1) QUICK FACTS  (verifiable in the repo)
+-----------------------------------------------------------------
+  - Built SOLO, in a few weeks. Has real users (keep the count honest).
+  - ~12,600 lines of TypeScript/TSX.
+  - 45 API route handlers · 35 pages/screens · 15 Prisma models · 7 migrations.
+  - One Next.js 15 codebase serving both frontend and backend.
+  - Quality snapshot: zero TS errors, clean lint, clean production build.
+  - Warm response times observed: ~120ms homepage · ~163ms auth session ·
+    ~755ms feed.
+
+A2) WHAT IT IS  (one place; pitch phrasings live in D1)
+-----------------------------------------------------------------
+An event-first social platform. Instead of a follower graph, connections
+form through shared real-world attendance: discover events near you,
+commit to attend, connect with the people who were actually there.
+  Problem it attacks: mainstream social optimizes engagement loops (feeds,
+    likes, follows) that rarely become real relationships.
+  The bet: make real-world attendance the trust signal.
+  The loop: DISCOVER -> COMMIT -> SHOW UP -> CONNECT.
+  For: attendees (meet people via shared interests), hosts (publish,
+    track attendance, QR check-in), communities (trust over follower counts).
+  Three promises -> features:
+    RELEVANCE -> ranked discovery feed (B2).
+    TRUST     -> connections anchored to a shared event (Connection.sharedEventId).
+    ACTION    -> swipe-to-commit, reminders, tickets.
+
+A3) TECH STACK  (choice -> role -> why; trade-offs consolidated in C1)
+-----------------------------------------------------------------
+FRONTEND
+  Next.js 15 App Router — UI + routing + server/client split.
+  React 18 — components.
+  TypeScript — one type language client+server (shared types in types/).
+  Tailwind CSS — utility styling; custom tokens: ink, parchment, ocean,
+    accent, bg, subtle, border.
+  Framer Motion — swipe-card gestures (SwipeStack).
+  Leaflet (raw L.map, NOT react-leaflet) — event map + location picker
+    (why raw: HMR reuse bug, see C3).
+  Recharts — host analytics charts.
+  react-hook-form — form state/validation (event wizards).
+  Zustand — authStore/uiStore (largely unused; session truth is NextAuth).
+BACKEND
+  Next.js API routes (app/api/*) — 45 handlers; colocated REST backend.
+  NextAuth v4 (Credentials + JWT) — most routes read the JWT via getToken;
+    a few (contacts/sync, referrals, referrals/share) use getServerSession.
+  Prisma 7 + PrismaPg adapter over pg Pool — typed queries, transactions.
+  PostgreSQL (Supabase) — relational fit for events/tickets/connections.
+  Socket.io — realtime chat, typing, read receipts (bootstrapped in the one
+    legacy pages/api/socketio.ts because App Router can't host it).
+INTEGRATIONS
+  Supabase Storage — images; uploaded server-side (service-role key never
+    hits the client).
+  Twilio Verify — phone OTP (signup + reset).
+  Twilio SMS/WhatsApp — referral invitations.
+  Nodemailer/SMTP (Gmail) — email OTP + notification email.
+  Web Contact Picker API (navigator.contacts) — device contact sync
+    (Chrome Android / Safari iOS 16+; desktop falls back).
+  qrcode.react — client-side QR rendering for tickets.
+INFRA
+  Vercel — hosting + deploy (git push -> prisma generate + next build) + cron.
+  Vercel Cron — GET /api/notifications/dispatch every 5 min (secret-gated).
+  PgBouncer (Supabase) — pooling: DATABASE_URL pooled at runtime; DIRECT_URL
+    direct for migrations (pooler lacks prepared statements).
+VERSIONS: Next ^15.2 · React 18.3 · Prisma ^7.6 · NextAuth ^4.24 ·
+  Socket.io ^4.7 · TypeScript ^5.5 · Tailwind ^3.4.
+
+A4) ARCHITECTURE DIAGRAM  (draw this; narration tactics in D)
+-----------------------------------------------------------------
+
+   ┌──────────────────────────────────────────────┐
+   │   BROWSER — Next.js App Router UI (React 18)   │
+   └──────┬───────────────────────────┬─────────────┘
+          │ fetch() REST              │ WebSocket
+          ▼                           ▼
+   ┌───────────────────┐   ┌──────────────────────────┐
+   │ app/api/* (REST)  │   │ pages/api/socketio.ts     │
+   │ 45 handlers       │   │ Socket.io on globalThis.io│
+   │ getToken() JWT ✓  │   └───────────┬──────────────┘
+   │ ownership check ✓ │               │ emitToRoom()
+   └─────────┬─────────┘               │ (lib/socketServer.ts)
+             ▼                          │
+   ┌────────────────────────────────────────────────┐
+   │        Prisma 7  (+ pg Pool adapter)             │
+   └───────────────────────┬──────────────────────────┘
+                           ▼
+   ┌────────────────────────────────────────────────┐
+   │   PostgreSQL (Supabase) — PgBouncer pooled       │
+   └────────────────────────────────────────────────┘
+   API also calls: Supabase Storage · Twilio Verify · Twilio SMS/WhatsApp
+                   · Nodemailer/SMTP.       Cron -> /api/notifications/dispatch.
+
+ROUTE GROUPS (parentheses = layout grouping, no URL segment):
+  app/(auth) — PUBLIC: login, signup(+verify,+password), reset(+verify,
+    +password), onboarding(profile, location).
+  app/(main) — PROTECTED (middleware): explore(+swipe), events([id], new,
+    manage[/[id][/edit|/scanner]]), connections, chat(+[id]), notifications,
+    profile(+edit|calendar|memories|tickets), settings(+contacts|host|
+    notifications|payments|privacy), users/[id].
+  app/api — REST backend.  app/join — public referral landing (/join?ref=CODE).
+  pages/api/socketio.ts — the ONLY Pages-Router file; hosts Socket.io.
+
+EDGE GATING — middleware.ts (JWT only, no DB):
+  no token -> /login?next=…  ·  isDeactivated -> /login?deactivated=1
+  profileComplete=false -> /onboarding/profile  ·  complete but on
+  /onboarding -> /explore.  (JWT carries profileComplete + isDeactivated,
+  so gating costs zero DB hits; freshness caveat in B1/C2.)
+
+TYPICAL REQUEST (say verbatim):
+  UI action -> fetch to app/api -> getToken validates JWT -> ownership check
+  -> Prisma query (transaction if mutating shared state) -> JSON -> UI update
+  (chat also emits over Socket.io).
+
+A5) DATA MODEL  (15 models; why-decisions in C1; lifecycle in B)
+-----------------------------------------------------------------
+Runtime = pooled DATABASE_URL; migrations = direct DIRECT_URL.
+
+CORE
+  User          email?/phone? (each UNIQUE, nullable), passwordHash,
+                displayName/bio/photo, city/lat/lng, preferences[],
+                profileComplete, isDeactivated, isVerifiedHost, visibility
+                settings, stripe ids (unused-online).
+  Event         hostId->User, title, description(short/full), category,
+                address/lat/lng, eventDate/startTime/endTime?, isFree,
+                ticketPrice?/currency, maxAttendees / currentAttendees
+                (denormalized counter, see B3/C1), approvalMode, visibility,
+                status, coverImageUrl.
+  EventImage    eventId, imageUrl, isCover, orderIndex.
+  EventAttendee eventId, userId, status, ticketId?.  UNIQUE (eventId,userId).
+  Ticket        eventId, userId, quantity, amountPaid, currency,
+                paymentIntentId, paymentStatus, qrCode (UNIQUE), qrValidated,
+                validatedAt.
+  EventSwipe    userId, eventId, action, createdAt.  (No unique (user,event)
+                — dup rows possible; route avoids blind create but can race.)
+SOCIAL
+  Connection    user1Id=requester, user2Id=receiver, status, sharedEventId?,
+                requestedAt, acceptedAt.  (No unique (user1,user2) — dup
+                requests possible under concurrency.)
+  Message       connectionId, senderId, content, type, metadata?, sentAt, readAt?.
+NOTIFICATIONS
+  Notification  userId, title, body, link?, readAt(null=unread), createdAt.
+  NotificationSchedule  userId, eventId?, type, title, body, link?, sendAt,
+                sentAt?.  UNIQUE (userId,eventId,type,sendAt) -> idempotent.
+  OtpToken      contact, codeHash (email; "" for phone), purpose,
+                verificationSid? (Twilio), attempts, verifiedAt, usedAt,
+                expiresAt.  Indexed (contact,purpose,usedAt).
+CONTENT / GROWTH
+  Memory        userId, eventId?, imageUrl, caption?, createdAt.
+  ContactImport userId, name?, phone, status, referralCode?,
+                registeredUserId?.  UNIQUE (userId,phone).
+  ContactInvitation fromUserId, toPhone, channel, status,
+                referralCode (UNIQUE), sentAt/clickedAt, registeredUserId?.
+  ReferralLink  code (UNIQUE), fromUserId, type, clicks, registrations, expiresAt?.
+
+ENUMS (7):
+  Visibility(private,connections,public) · ApprovalMode(auto,manual) ·
+  EventStatus(upcoming,ongoing,past,cancelled) ·
+  AttendeeStatus(committed,attended,missed,waitlisted) ·
+  ConnectionStatus(pending,accepted,declined,removed) ·
+  MessageType(text,event_card,location) ·
+  PaymentStatus(pending,paid,refunded,failed).
+
+FK / LIFECYCLE:
+  Most FKs ON DELETE RESTRICT (protect history); growth tables CASCADE;
+  sharedEvent/ticket/otp.user SET NULL. Event DELETE runs a transaction that
+  nulls Connection.sharedEventId + Memory.eventId, then deletes schedules,
+  swipes, images, attendees, tickets, then the event. Deactivation clears
+  email/phone/passwordHash and sets visibility private (re-signup safety).
+  Referred signup auto-creates an accepted Connection + welcome notifications.
+
+A6) API INDEX  (verbs as implemented; updates use PUT; flows in B)
+-----------------------------------------------------------------
+AUTH
+  POST /api/auth/send-otp      {contact,type,purpose} -> {status}
+  POST /api/auth/verify-otp    {contact,otp,purpose}  -> {token=OtpToken id}
+  POST /api/auth/register      {contact,password,token,ref?} -> {status}
+  POST /api/auth/reset-password{contact,password,token}      -> {status}
+EVENTS
+  GET    /api/events              scored public feed (page size 50).
+  POST   /api/events             create (host). CSRF-guarded.
+  GET    /api/events/:id         detail (host, images, attendees, analytics).
+  PUT    /api/events/:id         update (host).
+  DELETE /api/events/:id         delete + cascade (host).
+  GET    /api/events/:id/edit    form-shaped detail (host).
+  POST   /api/events/:id/commit  join FREE event (transactional capacity).
+  DELETE /api/events/:id/commit  cancel attendance.
+  GET/POST/PUT/DELETE /api/events/:id/images   gallery (host).
+  GET    /api/events/host        current user's hosted events.
+  POST   /api/events/swipe       record swipe. CSRF-guarded.
+TICKETS  (no online purchase endpoint; tickets created out-of-band)
+  GET  /api/tickets/me           my tickets.
+  GET  /api/tickets/:id/qr       QR string (owner).
+  POST /api/tickets/validate     {qr_code,event_id} validate (host).
+  POST /api/tickets/refund       {ticketId} <48h -> status refunded, remove
+                                 attendee, decrement capacity (DB only).
+CONNECTIONS
+  GET  /api/connections                accepted list.
+  GET  /api/connections/discover       nearby/interest/city search.
+  GET  /api/connections/suggestions    shared-attendance suggestions.
+  GET  /api/connections/requests       incoming pending.
+  POST /api/connections/request/:userId  send/auto-accept.
+  GET/DELETE /api/connections/:id      get / soft-remove.
+  PUT  /api/connections/:id/accept     recipient accepts.
+  PUT  /api/connections/:id/decline    recipient declines.
+CHAT
+  GET  /api/chat                       conversation list + unread counts.
+  GET  /api/chat/:connectionId         history (participant-gated).
+  POST /api/chat/:connectionId         send (persist then emit "message").
+  PUT  /api/chat/:connectionId/read    mark read.  (OPEN: no participant
+                                       check — see C2.)
+NOTIFICATIONS
+  GET  /api/notifications              newest 50.
+  DELETE /api/notifications            clear all.
+  PUT  /api/notifications/:id/read     mark one (owner-checked).
+  DELETE /api/notifications/:id        dismiss one (owner-checked).
+  PUT  /api/notifications/read-all     mark all read.
+  GET/POST /api/notifications/dispatch cron; dual-auth (Bearer CRON_SECRET
+                                       or NOTIFICATION_DISPATCH_SECRET).
+  POST /api/notifications/subscribe    web-push stub (no-op).
+REFERRALS / CONTACTS
+  GET  /api/referrals                  stats + invitations + links.
+  POST /api/referrals/share            {phones?,contactIds?,channel} invites.
+  GET/POST /api/referrals/:code        validate/track click; POST completes
+                                       referral. (OPEN IDOR — see C2.)
+  GET/POST /api/contacts               list / import.
+  GET/POST /api/contacts/sync          device sync + registered lookup.
+  POST /api/contacts/invite            deprecated -> 410 (use referrals/share).
+USERS / STORAGE
+  GET/PUT/DELETE /api/users/me         profile (DELETE = soft deactivate).
+                                       (OPEN: GET returns full row incl.
+                                       passwordHash — see C2.)
+  PUT  /api/users/me/location          {lat,lng,city,profileComplete?}.
+  PUT  /api/users/me/privacy           {profileVisibility}.
+  GET  /api/users/:id                  public profile (visibility-gated).
+  POST /api/storage/upload             multipart -> Supabase; returns URL.
+Errors: JSON {error} with 400/401/403/404/409/500/502. Referral completion
+  in register is try/catch-wrapped so it never blocks signup.
+
+A7) FRONTEND MAP  (components; page routes are in A4)
+-----------------------------------------------------------------
+  components/ui      — PageShell, SectionCard, NotificationBell, ChatBadge, Button.
+  components/events  — EventMap (Leaflet embed), MapPicker (picker),
+                       SwipeStack (Framer Motion cards).
+  components/profile — ProfileHeader, CalendarGrid, MemoriesGrid.
+  State/data: component-local useState + fetch-on-mount; session via NextAuth;
+    no global server-state lib. NotificationBell + ChatBadge poll every 30s.
+    Maps dynamically imported (SSR-safe); next/image for media.
+
+A8) ENVIRONMENT  (.env.example)
+-----------------------------------------------------------------
+  DATABASE_URL, DIRECT_URL, DATABASE_SSL, DATABASE_SSL_INSECURE (Windows dev),
+  EMAIL_ALLOW_SELF_SIGNED, NEXTAUTH_SECRET, NEXTAUTH_URL, NEXT_PUBLIC_APP_URL,
+  EMAIL_USER/PASS/FROM, TWILIO_ACCOUNT_SID/AUTH_TOKEN/VERIFY_SERVICE_SID/
+  PHONE_NUMBER/WHATSAPP_NUMBER, DEFAULT_PHONE_COUNTRY_CODE,
+  NEXT_PUBLIC_SUPABASE_URL/ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+  CRON_SECRET, NOTIFICATION_DISPATCH_SECRET.
+  CI: next lint + tsc --noEmit -> prisma generate -> next build ->
+  prisma migrate deploy. vercel.json sets the 5-min dispatch cron.
+
+
+#####################################################################
+PART B — HOW IT WORKS  (subsystem walkthroughs)
+#####################################################################
+Format: FLOW · HARD PART · GOTCHA. Endpoints/models are in A5/A6, not repeated.
+
+B1) AUTH & OTP
+-----------------------------------------------------------------
+Model: NextAuth v4, single Credentials provider, JWT strategy. No OAuth —
+(email OR phone) + password, but the contact is OTP-verified before a
+password exists.
+SIGNUP FLOW (5 steps):
+  1 send-otp: normalizeContact; EMAIL = generate 6-digit code, bcrypt-hash,
+    store OtpToken (5-min expiry), send via Nodemailer; PHONE = Twilio Verify
+    startVerification, store only a verificationSid. Guards: per-IP limit +
+    30s per-contact cooldown.
+  2 verify-otp: EMAIL bcrypt.compare; PHONE Twilio checkVerification. On
+    success set verifiedAt, RETURN the OtpToken id. Attempt counter caps tries.
+  3 register: reload OtpToken by id (must be verified/unexpired/unused),
+    bcrypt-hash password, create User (profileComplete=false), mark OTP used;
+    if ref present, complete the referral (B5).
+  4 auto-login: signIn("credentials") -> authorize() issues the JWT.
+  5 onboarding: PUT /api/users/me (profile) then PUT /api/users/me/location
+    {profileComplete:true}; session.update refreshes the JWT claim -> /explore.
+LOGIN: authorize() = normalizeContact -> per-IP limit (10/15min) ->
+  findFirst(email OR phone) -> reject if missing/isDeactivated ->
+  bcrypt.compare -> return {id,name,profileComplete,isDeactivated}.
+TOKEN JOURNEY (authOptions callbacks): jwt() on sign-in copies claims [no DB];
+  on trigger="update" copies client-passed values [no DB — trust gap, C2];
+  otherwise RE-READS DB for profileComplete/isDeactivated [DB]. session()
+  projects claims onto session.user. So middleware validates with no DB hit;
+  claim freshness depends on the last jwt re-read.
+HARD PART: two OTP mechanisms behind one interface — email codes WE own
+  (hash+store+compare); phone codes Twilio owns (we store only a sid). Route
+  branches on whether a verificationSid exists.
+GOTCHA: verify sets verifiedAt but the token isn't marked used until
+  register/reset consumes it -> its id is a short-lived bearer credential,
+  replayable in the 5-min window, and passed in the URL between steps.
+
+B2) EVENT DISCOVERY & RANKING  (the feed)  ★
+-----------------------------------------------------------------
+FLOW: load user lat/lng+preferences -> fetch public events (where
+  visibility="public", page size 50, ordered eventDate) -> if logged in,
+  find which of those events the user's accepted connections attend -> score,
+  sort desc, return.
+SCORE (memorize weights):
+  0.30 locationProximity  (Haversine, exp(-km/10))
+  0.25 categoryMatch      (1 if event.category in prefs)
+  0.15 timeProximity      ((7-daysUntil)/7, clamped)
+  0.15 connectionsAttending (1 if a connection is going)
+  0.10 popularity         (currentAttendees/maxAttendees)
+  0.05 recency            (newer scores higher)
+HARD PART: encodes the three promises — relevance (location+category),
+  trust (connections), action (time urgency).
+GOTCHA (real design flaw, great talking point): ranking runs AFTER
+  pagination — it scores only the 50 earliest-by-date rows, so globally best
+  matches never surface; and past events aren't filtered, so a past event's
+  daysUntil clamps to 0 and gets the MAX time score. Fix: filter
+  eventDate>=now and rank in SQL before paginating (scale path in C4).
+
+B3) COMMIT TO EVENT & CAPACITY  (concurrency)  ★
+-----------------------------------------------------------------
+FLOW: load event; reject if paid (isFree=false -> 403); pre-check existing
+  attendee -> "already-committed"; TRANSACTION { re-read event; if
+  currentAttendees>=maxAttendees throw EVENT_FULL; create EventAttendee;
+  increment counter }; map EVENT_FULL->409; if reminders enabled schedule
+  1-day/1-hour/10-min NotificationSchedule rows (idempotent via the unique key).
+HARD PART: two users racing the last seat is a classic race. The
+  transaction+re-read narrows the window; UNIQUE(eventId,userId) makes
+  double-commit impossible; that's why the capacity check is INSIDE the txn.
+GOTCHA: not fully airtight — two DIFFERENT users can both read the same
+  currentAttendees without a row lock; the clean fix is an atomic
+  `UPDATE ... SET current=current+1 WHERE current<max`. Also: concurrent
+  same-user commits throw an uncaught Prisma P2002 -> 500; the counter can
+  drift/go negative on cancel/refund (no floor); cancelling doesn't delete
+  the scheduled reminders.
+
+B4) REALTIME CHAT  (Socket.io)
+-----------------------------------------------------------------
+FLOW (persistence via REST, delivery via socket): open thread -> GET history
+  -> boot socket (fetch /api/socketio) + join(connectionId) -> send = POST
+  (DB write) then server emitToRoom "message" -> both clients update -> read =
+  PUT .../read flips readAt + emits "read" -> typing = client emits "typing"
+  (1.5s debounce), relayed to the room. Rooms keyed by connectionId.
+HARD PART: hosting a persistent socket in App Router — it can't, so
+  pages/api/socketio.ts lazily boots Socket.io and stashes it on
+  globalThis.io; API routes emit via lib/socketServer.ts. Single-node emits
+  can silently no-op, so the sender re-fetches after a successful POST — the
+  DB is the source of truth.
+GOTCHA: (security) socket connect/join are UNauthenticated -> anyone can join
+  any room and read/spoof messages, bypassing REST participant checks; also
+  the read route lacks a participant check (C2). (scale) globalThis assumes
+  one Node process -> breaks on serverless fan-out; needs a Redis adapter (C4).
+
+B5) GROWTH LOOP  (contacts -> referral -> auto-connect)
+-----------------------------------------------------------------
+FLOW: import contacts (Contact Picker or manual) -> invite (referrals/share
+  creates ContactInvitation + ReferralLink with a unique code, sends
+  SMS/WhatsApp with /join?ref=CODE) -> invitee opens /join (GET referrals/:code
+  tracks click) -> signs up with ?ref=CODE; ref threads verify->password->
+  register body; on register the code resolves: invitation marked registered,
+  an accepted Connection created, both users notified, stats incremented —
+  all non-fatal.
+HARD PART: threading the code through an OTP-gated multi-step signup so the
+  auto-connect fires exactly once at account creation, and matching an invited
+  phone to the new account.
+GOTCHA (real bug): POST /api/referrals/:code is unauthenticated and trusts a
+  client-supplied newUserId (IDOR -> force-connect + spam); codes are
+  Math.random 8-char = guessable (C2). contacts/sync deletes+recreates all
+  imports each run (loses invite history) and auto-connects matched users
+  without consent.
+
+B6) TICKETS & QR VALIDATION
+-----------------------------------------------------------------
+FLOW: Ticket has a unique qrCode rendered with qrcode.react (tickets/me lists;
+  tickets/:id/qr returns the value). Host "scanner" page POSTs to
+  tickets/validate -> verify caller is host -> find ticket by qrCode+eventId
+  -> 404 if none -> 409 if already validated -> set qrValidated + mark
+  attendee "attended". Refund flips paymentStatus, removes attendee,
+  decrements counter (<48h blocked).
+HARD PART: authorization + idempotency at the door — only the host validates,
+  and a QR must validate exactly once (unique qrCode + qrValidated flag;
+  scoped by qrCode+eventId + host check).
+GOTCHA: the "scanner" is manual paste, not a camera. The already-validated
+  check and the update aren't atomic (double-validate race). Refund issues NO
+  real money (no processor wired) — it only flips status; payments were
+  intentionally out of scope, so the ticketing/payment infra is half-built.
+
+B7) NOTIFICATIONS & DISPATCH
+-----------------------------------------------------------------
+FLOW: in-app Notification rows (list newest 50, mark/dismiss owner-checked,
+  read-all). Reminders live as NotificationSchedule rows (B3). Cron dispatch
+  every 5 min: query schedules with sendAt<=now and sentAt=null (take 200),
+  in a transaction createMany Notification rows and stamp sentAt. Dual-auth
+  (Bearer CRON_SECRET or NOTIFICATION_DISPATCH_SECRET); both checks guarded so
+  an unset secret can't be bypassed.
+GOTCHA: select+claim aren't atomic -> overlapping runs can double-send; a
+  backlog >200 drains slowly; scheduled email/push isn't wired (dispatch only
+  makes in-app rows). subscribe endpoint is a no-op stub.
+
+
+#####################################################################
+PART C — JUDGMENT  (decisions, security, scale, history)
+#####################################################################
+
+C1) DESIGN DECISIONS & TRADE-OFFS
+-----------------------------------------------------------------
+Template: "Chose X for [benefit]; cost is [downside]; revisit when [trigger]."
+  1 MONOLITH — one deploy/language/types, no CORS; cost: coupling + realtime
+    can't scale alone; extract the socket server first if needed.
+  2 JWT SESSIONS — edge auth, zero DB hits; cost: no instant revocation
+    (deactivation/reset don't kill live tokens); fix: short JWT + refresh.
+  3 JWT CLAIMS (profileComplete,isDeactivated) — edge gating without a query;
+    cost: staleness + the update-trigger trusts client values (bug, C2).
+  4 NO ONLINE PAYMENTS — removes PCI + Stripe; cost: ticketing/refund
+    half-built; fix: Stripe + webhooks, transactional refund.
+  5 DENORMALIZED currentAttendees — O(1) capacity/popularity; cost: can drift/
+    go negative; fix: atomic conditional UPDATE or a DB trigger.
+  6 IN-MEMORY FEED SCORING — simple, fine now; cost: ranks only the page
+    (B2 flaw); fix: SQL/PostGIS or a search engine.
+  7 IN-MEMORY RATE LIMITER — zero-dep; cost: per-instance, serverless-
+    ineffective; fix: Redis INCR+TTL.
+  8 SOCKET.IO ON globalThis — only way in App Router; cost: single-process;
+    fix: dedicated socket server + Redis adapter.
+  9 PRISMA — shared types + migrations + txns; cost: leaky for geo; fix: raw
+    SQL/PostGIS on the hot path.
+  10 POSTGRES — relational integrity (unique attendee, cascades, txn
+    capacity); document DB would fight all of it.
+  11 TAILWIND + hand-rolled UI (Button exists but bypassed) — fast; cost:
+    design-system drift; fix: consolidate on Button/PageShell.
+  12 SUPABASE — managed PG+Storage+pooling; cost: some coupling (hardcoded
+    storage host in next.config); fix: parameterize.
+  WHY user1/user2 not a directed follow: the request is directional
+    (preserve initiator for accept/notify); queries treat it undirected via
+    OR(user1=me,user2=me). WHY a join table (EventAttendee) not an array:
+    attendance carries state (status/ticket/dates) + needs a unique constraint.
+  META: these are deliberate "good-enough-for-a-solo-MVP" choices — traded
+    scale-hardening for shipping speed, with a known upgrade path for each.
+
+C2) SECURITY POSTURE  (ACTUAL code state — see ACCURACY NOTE up top)
+-----------------------------------------------------------------
+DEFENDED (verified present):
+  - bcrypt passwords; email OTP hashed at rest; phone OTP via Twilio Verify;
+    tokens expire + attempt-limited.
+  - Prisma parameterized queries (no SQLi).
+  - JWT validated in middleware + protected routes; deactivated blocked at
+    login and edge.
+  - Ownership checks on many routes (event host; connection participant on
+    chat GET/POST; ticket-validate host; notification/memory owner).
+  - Feed filters visibility="public" (leak fixed); QR re-scan rejected 409;
+    event-delete cascade transaction; CSRF origin check on auth mutations +
+    POST /api/events + /api/events/swipe.
+  - Supabase service-role key server-side only; upload validation (10MB +
+    MIME + extension + bucket whitelist).
+  - Profile visibility gate on GET /api/users/:id.
+  - Security headers (next.config.mjs): X-Content-Type-Options, X-Frame-
+    Options, Referrer-Policy, Permissions-Policy, HSTS (no CSP yet).
+  - Per-IP rate limits: send-otp 5/15m · verify-otp 15/15m (+5-attempt DB
+    lock) · register 5/hr · login 10/15m.
+
+OPEN GAPS — ranked (WHAT · IMPACT · FIX). Root theme: broken access control.
+  CRITICAL
+  1 GET /api/events/:id has no auth/host check yet returns full attendee list
+    (names/emails), revenue, analytics -> anyone scrapes PII+financials. Fix:
+    split public vs host-only fields; gate behind host===token.sub.
+  2 POST /api/referrals/:code unauthenticated + trusts client newUserId;
+    codes Math.random 8-char -> forced connection + notification spam (IDOR).
+    Fix: require session; assert newUserId===session.user.id; CSPRNG codes.
+  3 JWT update-trigger copies client profileComplete/isDeactivated with no DB
+    check; PUT /api/users/me also lets a client set profileComplete ->
+    onboarding-gate bypass / self-un-deactivate. Fix: DB is source of truth.
+  4 GET/PUT/DELETE /api/users/me return the FULL user row incl. passwordHash
+    -> hash leaves the server. Fix: explicit Prisma select (DTO). [OPEN — the
+    prior "fixed" claim was never applied; verified in users/me/route.ts.]
+  5 Socket.io connect/join unauthenticated + chat/:id/read has no participant
+    check + chat REST ignores connection status -> join any room, mark others'
+    messages read, removed users keep access. Fix: auth the handshake; verify
+    membership; enforce status="accepted". [read-route IDOR OPEN — verified.]
+  HIGH / MEDIUM
+  6 Stored XSS in Leaflet popups (event title/venue as raw HTML). Fix: escape.
+  7 reset-password lacks CSRF + rate limit (siblings have them); no session
+    invalidation after reset. Fix: add both; bump a token version.
+  8 Rate limiter in-memory (serverless-ineffective) + x-forwarded-for
+    spoofable. Fix: Redis + trusted client-IP.
+  9 GET /api/users/:id timeline events aren't visibility-filtered (unlike the
+    public calendar) -> private event details leak. Fix: filter by visibility.
+  10 email/phone used as display-name fallback across list endpoints (PII).
+  HARDENING: Math.random for OTP+referral codes -> CSPRNG; no password-strength
+    rule; bcrypt cost 10; upload trusts client file.type (no magic-byte sniff)
+    + unsanitized non-user-scoped folder with upsert:true; CSRF treats missing
+    Origin as trusted + not applied uniformly; NODE_TLS_REJECT_UNAUTHORIZED=0
+    non-prod (Windows workaround) is risky.
+  OWASP map: A01 Broken Access Control (#1,#2,#5,#9 — dominant) · A02 Crypto
+    (#4, Math.random) · A03 Injection (#6) · A07 Auth (#7,#8).
+
+C3) NOTABLE CHALLENGES & FIXES  ("walk me through a hard bug" material)
+-----------------------------------------------------------------
+  - Realtime chat in App Router: bootstrap Socket.io in the legacy handler on
+    globalThis; persist-then-refetch fallback because a single-node emit can
+    no-op (DB is truth). [Full flow in B4.]
+  - Leaflet + HMR "map already initialized": react-leaflet's MapContainer
+    couldn't detect HMR reusing a DOM node still carrying _leaflet_id. Fix:
+    raw L.map() in a useEffect that first clears node._leaflet_id. (Why the app
+    uses raw Leaflet.)
+  - Referral code lost across multi-step signup: /join linked to /signup
+    without ref. Fix: thread ref through every URL step + register body;
+    complete inline, non-fatally. [Flow in B5.]
+  - PgBouncer vs migrations: the transaction pooler lacks prepared statements,
+    so migrations fail through it. Fix: runtime pooled DATABASE_URL, migrations
+    direct DIRECT_URL via the schema datasource (the TS config API doesn't take
+    a directUrl field in Prisma 7).
+  - Windows TLS (dev only): Supabase's cert chain broke pg + the Supabase SDK
+    (5–30s loads). Fix: DATABASE_SSL_INSECURE=true (pg Pool) +
+    NODE_TLS_REJECT_UNAUTHORIZED=0 for non-prod in next.config (SDK fetch).
+    Not used in prod.
+  - Contact sync desktop: Contact Picker API is Chrome-Android/Safari-iOS-16+
+    only; feature-detected via "contacts" in navigator with a desktop fallback.
+  - Audit fixes actually applied: FK cascade on event delete; feed visibility
+    filter; QR re-scan 409; swipe no longer a blind create; CSRF on event
+    create/swipe; dead unauthenticated /api/auth/login route removed.
+  - MIGRATION ORDERING BUG (open): the folder 20260326_contact_sync_invitations
+    lacks a HHMMSS timestamp, so it sorts AFTER 20260326192013_… which alters
+    tables it hasn't created yet -> a clean `prisma migrate deploy` fails.
+    Fix: rename with a proper timestamp.
+
+C4) SCALING & PERFORMANCE  (bottlenecks in priority order; symptom -> fix)
+-----------------------------------------------------------------
+Framing: single-region monolith on pooled Postgres; attack order = feed,
+  realtime, rate limiter, DB N+1.
+  1 FEED/RANKING: scores 50 date-paginated rows in memory (can't rank
+    globally; recomputes Haversine each request). Fix path: filter past +
+    rank before paginate -> PostGIS + GIST spatial index -> precompute slow
+    signals -> search engine (ES/Typesense) -> short-TTL per-user cache.
+  2 REALTIME: globalThis, one process -> cross-instance emits fail. Fix:
+    dedicated socket service + @socket.io/redis-adapter + authed handshake;
+    or a managed provider (Ably/Pusher).
+  3 RATE LIMITER: per-instance Map -> N× effective limit. Fix: Redis INCR+TTL;
+    trusted client-IP.
+  4 DATABASE: pooling already right (PgBouncer + DIRECT_URL). N+1/over-fetch —
+    some list endpoints include full user rows + per-item findFirst (contacts
+    sync, suggestions); fix with select, `in` batching, Sets over
+    Array.includes; add composite indexes (events visibility+eventDate,
+    attendees eventId, messages connectionId+sentAt, connections
+    user1/user2+status); read replicas if reads dominate.
+  5 DISPATCH: non-atomic claim (double-send) + 200 cap. Fix: atomic claim
+    (UPDATE … WHERE sentAt IS NULL RETURNING), loop to drain, real queue.
+  6 MEDIA/CLIENT: Supabase CDN fronts images; badge/bell poll 30s per mount
+    -> SWR/socket push; runtime @import fonts -> next/font.
+  ALREADY RIGHT: stateless routes scale horizontally; pooled DB; JWT edge auth;
+    denormalized counter; feed pagination exists.
+
+C5) CURRENT STATE & ROADMAP
+-----------------------------------------------------------------
+State: tsc/lint/build clean; all A6 flows implemented; C3-applied fixes in.
+  Payments intentionally offline. Prior integrations removed (Stripe, Resend,
+  standalone socket lib). NO automated tests yet.
+Prioritized backlog (order = the answer being graded):
+  P0 SECURITY/CORRECTNESS: close C2 access-control cluster (#1–#5); stop
+    trusting client auth flags; fix the migration-ordering deploy bug;
+    concurrency (atomic capacity UPDATE, catch P2002, floor counter, atomic
+    dispatch claim, atomic QR validate).
+  P1 SCALE: Redis rate limiter; feed fix (filter+rank-before-paginate+PostGIS);
+    dedicated socket + Redis adapter; add missing uniques (Connection
+    user1/user2, EventSwipe user/event) + real upserts.
+  P2 QUALITY: test suite (start with capacity txn, auth/OTP, ranking, referral
+    auto-connect; then API integration; add CI); zod validation layer;
+    de-dup the new/edit event wizards + OTP-verify components; timezone
+    correctness (store UTC, render local).
+  P3 FEATURES: real payments (Stripe+webhooks); manual approval
+    (ApprovalMode.manual unused) + waitlist (AttendeeStatus.waitlisted unused);
+    real camera QR scanner; web push (subscribe is a stub); learned ranking.
+  FINISH-WHAT'S-HALF-BUILT theme: PaymentStatus/stripe ids,
+    ApprovalMode.manual, waitlisted, subscribe are schema-present but
+    logic-absent — cheap, high-value wiring, not redesign.
+
+
+#####################################################################
+PART D — INTERVIEW DELIVERY  (things to say out loud)
+#####################################################################
+
+D1) PITCH  (three lengths; content facts live in A2)
+-----------------------------------------------------------------
+10-sec: "Event-first social app — instead of followers, your social graph is
+  built from the events you actually show up to."
+30-sec (non-technical): "A social app that helps people make real friends
+  through events instead of endless scrolling. You find events near you, say
+  you're going, and it connects you with the others who showed up — chat and
+  invite friends by text. I built the whole thing solo in a few weeks — app,
+  database, sign-up, live chat — and it has real users."
+60-sec (technical): "An event-first social platform, a single Next.js 15 app —
+  App Router UI plus ~45 API routes as the backend. Auth is NextAuth JWT with
+  phone/email OTP; data is Postgres via Prisma with 15 models; realtime chat
+  is Socket.io; images on Supabase Storage; Twilio for OTP and invites.
+  Connections are anchored to shared attendance, not a follow graph — so the
+  interesting parts are the discovery scoring, the capacity-safe commit
+  transaction, and running a persistent socket inside App Router, which it
+  doesn't natively support."
+Showcases: full-stack ownership (UI->DB->deploy), auth/security, relational
+  modeling, realtime, third-party integration — solo.
+
+D2) STAR STORIES  (~90s each; pick by prompt)
+-----------------------------------------------------------------
+Prompt map: hard technical -> D2a or D2b · trade-off -> D2c · bug/self-review
+  -> D2d · most proud -> D2b.
+D2a CAPACITY RACE (concurrency): S last-seat double-book / double-commit.
+  T guarantee no overbook without heavy locking. A capacity check +
+  writes in one Prisma txn (re-read, throw EVENT_FULL, create attendee,
+  increment) + UNIQUE(eventId,userId); map EVENT_FULL->409. R works in the
+  common case; my own review found two different users can still race the last
+  seat -> the correct fix is an atomic conditional UPDATE, and I must catch
+  P2002 instead of 500ing. Lesson: "wrap in a transaction" ≠ "serialize the
+  invariant."
+D2b REALTIME IN APP ROUTER (most proud): S live chat inside one Next.js app.
+  T App Router can't hold a persistent server and I didn't want a separate
+  backend. A bootstrapped Socket.io in the one legacy pages/api handler on
+  globalThis; API routes emit via a helper; kept PERSISTENCE on REST (POST
+  writes DB, THEN emits) so the socket is a delivery channel, not the source
+  of truth; persist-then-refetch fallback. R end-to-end realtime in one
+  deploy; clear-eyed on the limits — single process, so production is a
+  dedicated socket service + Redis adapter + authed handshake.
+D2c JWT vs DB SESSIONS (trade-off): S auth that also gates onboarding +
+  deactivation on every protected route. T stateless JWT vs DB sessions given
+  middleware runs on every nav. A JWT + edge gating with claims, refreshed by
+  re-reading the DB in the jwt callback. R fast navigation, no DB hit per page;
+  accepted trade-off is revocation (fix: short access token + refresh); and I
+  caught a real bug — the update-trigger trusted client claim values (a
+  privilege-escalation hole).
+D2d SECURITY SELF-AUDIT (initiative): S before "done," a systematic pass over
+  all 45 routes for authorization, not just function. T find where endpoints
+  trust the client. A route by route: "who can call this? does it re-verify
+  ownership?" — surfaced the event-detail PII/revenue leak, the referral IDOR,
+  the passwordHash exposure, the unauthenticated socket; ranked + OWASP-mapped
+  (root cause A01). R a prioritized fix list + a default rule: authorization
+  is a server-side re-check on every sensitive read/write.
+Delivery: mostly ACTION; always a RESULT + LESSON (even when it exposed a
+  limit); use "I"; drop the frame and go deep if interrupted.
+
+D3) Q&A BANK  (short spoken answers; depth in B/C)
+-----------------------------------------------------------------
+Product
+  Q What is it / what problem? -> A2 in a sentence.
+  Q Core loop / how connections form? -> discover->commit->show up->connect;
+    directional request that becomes a symmetric accepted connection anchored
+    to a shared event.
+  Q Free vs paid? -> free commits instantly (capacity); paid = "contact host,"
+    no online processing; tickets still tracked + QR-validated.
+Architecture
+  Q Describe it / why a monolith / why the Pages-Router file / typical request
+    / how middleware works -> A3, A4, C1.1.
+  Q Why DIRECT_URL + DATABASE_URL? -> pooled runtime; direct for migrations
+    (pooler lacks prepared statements).
+Auth & data
+  Q JWT or session, why? -> C1.2.  Q How does OTP work? -> B1 hard part.
+  Q Passwords? -> bcrypt; email OTP hashed; phone via Twilio.
+  Q Prevent double-commit / overbooking? -> B3.  Q Counter vs COUNT(*)? -> C1.5.
+  Q Chat authz? -> GET/POST load the connection + verify user1/user2 (but read
+    route + socket are OPEN, C2).  Q Refunds without a processor? -> B6.
+  Q Idempotent reminders? -> UNIQUE(userId,eventId,type,sendAt)+skipDuplicates.
+Realtime / feed
+  Q How does chat deliver live? -> B4.  Q Why not poll? -> latency+load (badge
+    does poll 30s).  Q Ranking + what's wrong? -> B2.  Q Scale to millions? ->
+    C4.1.
+Security / scale
+  Q Biggest weakness? -> broken access control; server-side re-checks (C2).
+  Q CSRF? -> same-origin on mutations (not uniform; reset-password lacks it).
+  Q XSS? -> Leaflet popups raw HTML (C2 #6).  Q Production-secure? -> "MVP-
+    secure with a ranked hardening backlog."  Q First bottleneck? -> C4.
+  Q Images? -> server-side service-role upload + validation + CDN.
+Process / curveballs
+  Q Tests? -> none yet; risk-ranked plan (C5 P2).  Q Refactor? -> C5 P2.
+  Q Most proud? -> D2b.  Q Solo — what did YOU build? -> all of it.
+  Q Do differently? -> a validation+authorization helper layer first, so every
+    route inherited body-validation + ownership checks (would've prevented the
+    access-control cluster).  Q "Ranking is broken" -> agree; here's the fix
+    (B2/C4.1). Agreeing + fixing beats defending.
+
+D4) METRICS  (have one honest number)
+-----------------------------------------------------------------
+  Scope: A1. Quality: zero TS/lint errors, clean build. Warm times: ~120ms
+  home / ~163ms session / ~755ms feed. Usage: a handful of real users signed
+  up + created events — keep qualitative unless you have exact figures.
+
+D5) REHEARSAL CHECKLIST
+-----------------------------------------------------------------
+3 evenings: (1) pitch D1 x5, draw A4 x3, sketch A5 + name the 7 enums, recite
+  the B2 weights + B1 steps. (2) narrate all 6 B-walkthroughs, the C4 story
+  (framing + 3 bottlenecks), the C2 top-5 gaps + OWASP line. (3) all 4 D2
+  stories timed ~90s, cover-and-answer D3, one full mock (pitch -> feature
+  drill -> curveball), recorded.
+Must-know-cold: pitch · A4 diagram + request sentence · B1 auth + C1.2 JWT
+  trade-off · B2 formula+flaw · B3 concurrency · B4 REST-persist/socket-deliver
+  + globalThis limit · C2 top-3 gaps+fixes · the 3 headline trade-offs
+  (monolith/JWT/no-payments) · "no tests yet"+plan · one flawless STAR story.
+Verify before you walk in: real user count · the A1 scope numbers match the
+  repo · which C2 gaps you've actually FIXED in code (don't claim a fix an
+  interviewer can't see — this is why the ACCURACY NOTE exists).
+Interview-day: diagram first; point then reasoning; volunteer trade-offs/gaps;
+  every weakness paired with a fix; "I don't know but here's how I'd find out";
+  use "I"; agree-and-fix when they're right; let them steer.
+
+#####################################################################
+END — one deduplicated source of truth. Rehearse OUT LOUD.
+#####################################################################
