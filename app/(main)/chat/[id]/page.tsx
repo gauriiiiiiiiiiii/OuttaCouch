@@ -54,10 +54,12 @@ export default function ChatThreadPage() {
   }, [id, loadMessages, markRead]);
 
   useEffect(() => {
-    if (!id) {
+    // Connect once the current user is known so the socket is opened a single
+    // time per thread (the handshake is authenticated server-side).
+    if (!id || !userId) {
       return;
     }
-    fetch("/api/socketio");
+    fetch("/api/socketio").catch(() => undefined);
     const socket = io({ path: "/api/socketio" });
     socketRef.current = socket;
     socket.emit("join", id);
@@ -65,7 +67,7 @@ export default function ChatThreadPage() {
       setMessages((prev) =>
         prev.some((m) => m.id === message.id) ? prev : [...prev, message]
       );
-      if (userId && message.senderId !== userId) {
+      if (message.senderId !== userId) {
         markRead();
       }
     });
@@ -80,6 +82,7 @@ export default function ChatThreadPage() {
     });
     return () => {
       socket.disconnect();
+      socketRef.current = null;
     };
   }, [id, userId, loadMessages, markRead]);
 

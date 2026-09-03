@@ -7,10 +7,13 @@
 //
 // The chat UI already has a POST-response append fallback so messages
 // always appear even when this server is not running.
+//
+// Authentication and room authorisation live in lib/socketAuth.ts.
 
 import type { Server as HttpServer } from "http";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Server as IOServer } from "socket.io";
+import { registerSocketHandlers } from "@/lib/socketAuth";
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   type NetServerWithIo = HttpServer & { io?: IOServer };
@@ -28,26 +31,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       addTrailingSlash: false
     });
 
-    io.on("connection", (socket) => {
-      socket.on("join", (room: string) => {
-        socket.join(room);
-      });
-
-      socket.on("message", (payload) => {
-        if (payload?.room) {
-          io.to(payload.room).emit("message", payload.message);
-        }
-      });
-
-      socket.on("typing", (payload) => {
-        if (payload?.roomId) {
-          io.to(payload.roomId).emit("typing", {
-            userId: payload.userId,
-            isTyping: payload.isTyping
-          });
-        }
-      });
-    });
+    registerSocketHandlers(io);
 
     server.io = io;
     (globalThis as { io?: IOServer }).io = io;
