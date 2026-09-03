@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { normalizeContact } from "@/lib/normalizeContact";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
+import { isSameOrigin } from "@/lib/csrf";
+import { validatePassword } from "@/lib/password";
 
 type ResetBody = {
   contact: string;
@@ -10,11 +13,34 @@ type ResetBody = {
 };
 
 export async function POST(request: Request) {
+  // CSRF
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Rate limit: 5 password resets per IP per 15 minutes
+  const ip = getClientIp(request);
+  const rl = rateLimit(`reset-password:${ip}`, 5, 15 * 60 * 1000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) }
+      }
+    );
+  }
+
   const body = (await request.json()) as ResetBody;
   const contact = normalizeContact(body.contact);
 
   if (!contact || !body.password || !body.token) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  const passwordError = validatePassword(body.password);
+  if (passwordError) {
+    return NextResponse.json({ error: passwordError }, { status: 400 });
   }
 
   const otpToken = await prisma.otpToken.findUnique({

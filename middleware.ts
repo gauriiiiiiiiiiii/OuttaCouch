@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/explore",
+    "/explore/:path*",
     "/events/:path*",
     "/connections",
     "/chat/:path*",
