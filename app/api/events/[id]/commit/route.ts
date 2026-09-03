@@ -30,39 +30,49 @@ export async function POST(
     return NextResponse.json({ status: "already-committed" });
   }
 
+  // Capacity is enforced by a single conditional UPDATE, so two different
+  // users racing for the last seat are serialised by the row lock: the loser's
+  // UPDATE matches zero rows and the whole transaction (including the attendee
+  // insert) rolls back. UNIQUE(eventId, userId) handles the same user twice.
   const committed = await prisma.$transaction(async (tx) => {
-    const fresh = await tx.event.findUnique({ where: { id: event.id } });
-    if (!fresh) {
-      throw new Error("EVENT_MISSING");
-    }
-
-    if (fresh.currentAttendees >= fresh.maxAttendees) {
-      throw new Error("EVENT_FULL");
-    }
-
     await tx.eventAttendee.create({
       data: {
-        eventId: fresh.id,
+        eventId: event.id,
         userId,
         status: "committed"
       }
     });
 
-    await tx.event.update({
-      where: { id: fresh.id },
-      data: { currentAttendees: { increment: 1 } }
-    });
+    const claimedSeats = await tx.$executeRaw`
+      UPDATE "events"
+      SET "current_attendees" = "current_attendees" + 1
+      WHERE "id" = ${event.id} AND "current_attendees" < "max_attendees"
+    `;
 
-    return fresh.id;
-  }).catch((err) => {
-    if ((err as Error).message === "EVENT_FULL") {
-      return null;
+    if (claimedSeats === 0) {
+      throw new Error("EVENT_FULL");
+    }
+
+    return event.id;
+  }).catch((err: unknown) => {
+    const error = err as { message?: string; code?: string };
+    if (error.message === "EVENT_FULL") {
+      return "FULL" as const;
+    }
+    // Unique (eventId, userId) violation: two concurrent commits from the same
+    // user. The first one won, so report the idempotent outcome instead of 500.
+    if (error.code === "P2002") {
+      return "DUPLICATE" as const;
     }
     throw err;
   });
 
-  if (!committed) {
+  if (committed === "FULL") {
     return NextResponse.json({ error: "Event full" }, { status: 409 });
+  }
+
+  if (committed === "DUPLICATE") {
+    return NextResponse.json({ status: "already-committed" });
   }
 
   const user = await prisma.user.findUnique({
@@ -135,9 +145,14 @@ export async function DELETE(
 
   await prisma.$transaction([
     prisma.eventAttendee.delete({ where: { id: attendee.id } }),
-    prisma.event.update({
-      where: { id },
+    // Guard against the counter drifting below zero.
+    prisma.event.updateMany({
+      where: { id, currentAttendees: { gt: 0 } },
       data: { currentAttendees: { decrement: 1 } }
+    }),
+    // Cancelling attendance also cancels any reminders not yet sent.
+    prisma.notificationSchedule.deleteMany({
+      where: { userId: token.sub, eventId: id, sentAt: null }
     })
   ]);
 

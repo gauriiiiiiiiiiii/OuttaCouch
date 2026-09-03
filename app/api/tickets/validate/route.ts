@@ -35,10 +35,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Ticket already validated" }, { status: 409 });
   }
 
-  await prisma.ticket.update({
-    where: { id: ticket.id },
+  // Conditional update makes the check-and-set atomic: two scanners racing the
+  // same QR can only have one of them flip the flag.
+  const claimed = await prisma.ticket.updateMany({
+    where: { id: ticket.id, qrValidated: false },
     data: { qrValidated: true, validatedAt: new Date() }
   });
+
+  if (claimed.count === 0) {
+    return NextResponse.json({ error: "Ticket already validated" }, { status: 409 });
+  }
 
   await prisma.eventAttendee.updateMany({
     where: { ticketId: ticket.id },

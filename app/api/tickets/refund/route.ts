@@ -31,6 +31,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Already refunded" }, { status: 400 });
   }
 
+  if (ticket.qrValidated) {
+    return NextResponse.json({ error: "Ticket already used for entry" }, { status: 400 });
+  }
+
   const now = new Date();
   const hoursUntilEvent =
     (ticket.event.eventDate.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -42,17 +46,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await prisma.ticket.update({
-    where: { id: ticket.id },
-    data: { paymentStatus: "refunded" }
-  });
-
-  await prisma.eventAttendee.deleteMany({ where: { ticketId: ticket.id } });
-
-  await prisma.event.update({
-    where: { id: ticket.eventId },
-    data: { currentAttendees: { decrement: ticket.quantity } }
-  });
+  await prisma.$transaction([
+    prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { paymentStatus: "refunded" }
+    }),
+    prisma.eventAttendee.deleteMany({ where: { ticketId: ticket.id } }),
+    // Never let the denormalised counter go negative.
+    prisma.event.updateMany({
+      where: { id: ticket.eventId, currentAttendees: { gte: ticket.quantity } },
+      data: { currentAttendees: { decrement: ticket.quantity } }
+    })
+  ]);
 
   return NextResponse.json({ success: true });
 }
