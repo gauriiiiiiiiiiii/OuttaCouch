@@ -123,7 +123,7 @@ A4) ARCHITECTURE DIAGRAM  (draw this; narration tactics in D)
 ROUTE GROUPS (parentheses = layout grouping, no URL segment):
   app/(auth) — PUBLIC: login, signup(+verify,+password), reset(+verify,
     +password), onboarding(profile, location).
-  app/(main) — PROTECTED (middleware): explore(+swipe), events([id], new,
+  app/(main) — PROTECTED (middleware): explore (swipe deck inline), events([id], new,
     manage[/[id][/edit|/scanner]]), connections, chat(+[id]), notifications,
     profile(+edit|calendar|memories|tickets), settings(+contacts|host|
     notifications|payments|privacy), users/[id].
@@ -249,8 +249,8 @@ NOTIFICATIONS
 REFERRALS / CONTACTS
   GET  /api/referrals                  stats + invitations + links.
   POST /api/referrals/share            {phones?,contactIds?,channel} invites.
-  GET/POST /api/referrals/:code        validate/track click; POST redeems for
-                                       the SIGNED-IN caller (session required).
+  GET  /api/referrals/:code            validate + track click (public). No POST:
+                                       referrals complete inline in /auth/register.
   GET/POST /api/contacts               list / import.
   GET/POST /api/contacts/sync          device sync + registered lookup.
 USERS / STORAGE
@@ -397,8 +397,9 @@ FLOW: import contacts (Contact Picker or manual) -> invite (referrals/share
 HARD PART: threading the code through an OTP-gated multi-step signup so the
   auto-connect fires exactly once at account creation, and matching an invited
   phone to the new account.
-GOTCHA: POST /api/referrals/:code now requires a session and redeems for the
-  caller only (re-activating a removed connection); codes come from
+GOTCHA: the old unauthenticated POST /api/referrals/:code (client-supplied
+  newUserId, IDOR) was removed outright — the only completion path is inside
+  register, keyed to the account being created; codes come from
   crypto.randomInt. Still open: contacts/sync deletes+recreates all imports
   each run (loses invite history) and auto-connects matched users without
   consent.
@@ -498,8 +499,8 @@ DEFENDED (verified present):
 CLOSED IN CODE (each has unit tests and was exercised end-to-end):
   1 GET /api/events/:id — roster/revenue/analytics are host-only (isHost);
     goingList never falls back to email.
-  2 POST /api/referrals/:code — session required, redeems for the caller;
-    referral + OTP codes from crypto.randomInt.
+  2 POST /api/referrals/:code — removed (referrals complete only inside
+    register); referral + OTP codes from crypto.randomInt.
   3 JWT update-trigger ignores client claims (DB re-read); PUT /api/users/me
     no longer accepts profileComplete; location/privacy/profile bodies are
     validated.

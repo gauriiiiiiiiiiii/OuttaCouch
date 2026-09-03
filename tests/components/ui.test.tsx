@@ -28,15 +28,14 @@ describe("PageShell", () => {
 });
 
 describe("SectionCard", () => {
-  it("renders title, optional description, header action and children", () => {
+  it("renders title, optional description and children", () => {
     render(
-      <SectionCard title="Card" description="Desc" headerAction={<button>Act</button>}>
+      <SectionCard title="Card" description="Desc">
         <span>inner</span>
       </SectionCard>
     );
     expect(screen.getByRole("heading", { level: 2, name: "Card" })).toBeInTheDocument();
     expect(screen.getByText("Desc")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Act" })).toBeInTheDocument();
     expect(screen.getByText("inner")).toBeInTheDocument();
   });
 

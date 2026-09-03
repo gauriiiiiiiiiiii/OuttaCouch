@@ -193,6 +193,8 @@ describe("ConnectionsPage", () => {
     await waitFor(() => expect(calls().some(([u, i]) => u === "/api/connections/r1/accept" && i?.method === "PUT")).toBe(true));
     expect(await screen.findByText("2 people connected with you.")).toBeInTheDocument();
     expect(screen.getByText("No requests right now.")).toBeInTheDocument();
+    // Accepting opens the new conversation straight away.
+    expect(nav.push).toHaveBeenCalledWith("/chat/r1");
 
     await userEvent.click(screen.getByRole("button", { name: "Connect" }));
     await waitFor(() => expect(calls().some(([u, i]) => u === "/api/connections/request/n1" && i?.method === "POST")).toBe(true));

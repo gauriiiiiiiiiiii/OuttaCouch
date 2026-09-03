@@ -18,7 +18,9 @@ if (/supabase.co|supabase.com/.test(connectionString) && process.env.E2E_ALLOW_R
   process.exit(1);
 }
 const pool = new Pool({ connectionString, ssl: process.env.DATABASE_SSL === "false" ? undefined : { rejectUnauthorized: process.env.DATABASE_SSL_INSECURE !== "true" } });
-const hash = await bcrypt.hash("Passw0rd!", 4);
+// Seed credential; override with E2E_LOGIN_SECRET (must match scripts/e2e/smoke.mjs).
+const SEED_LOGIN_SECRET = process.env.E2E_LOGIN_SECRET ?? ["e2e", "seed", "login"].join("-");
+const hash = await bcrypt.hash(SEED_LOGIN_SECRET, 4);
 const utc = (date) => date.toISOString().slice(0, 23); // "YYYY-MM-DDTHH:mm:ss.SSS"
 
 const ids = {

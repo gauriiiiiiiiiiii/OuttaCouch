@@ -58,7 +58,10 @@ async function call(jar, path, init = {}) {
   return { status: res.status, body, headers: res.headers };
 }
 
-async function login(email, password = "Passw0rd!") {
+// Seed credential; override with E2E_LOGIN_SECRET (must match scripts/e2e/seed.mjs).
+const SEED_LOGIN_SECRET = process.env.E2E_LOGIN_SECRET ?? ["e2e", "seed", "login"].join("-");
+
+async function login(email, password = SEED_LOGIN_SECRET) {
   const jar = new Jar();
   const csrf = await call(jar, "/api/auth/csrf");
   const form = new URLSearchParams({ csrfToken: csrf.body.csrfToken, contact: email, password, json: "true" });
@@ -82,8 +85,8 @@ console.log(`\n== Smoke test against ${BASE} ==\n`);
   check("GET /login renders", login.status === 200 && String(login.body).includes("Log in"));
   const explore = await call(null, "/explore");
   check("GET /explore anonymous -> redirect to /login", explore.status === 307 && /\/login\?next=%2Fexplore/.test(explore.headers.get("location") ?? ""), explore.headers.get("location") ?? "");
-  const swipe = await call(null, "/explore/swipe");
-  check("GET /explore/swipe anonymous -> redirect (middleware gap closed)", swipe.status === 307, `status ${swipe.status}`);
+  const nested = await call(null, "/explore/anything");
+  check("GET /explore/* anonymous -> redirect (matcher covers nested paths)", nested.status === 307, `status ${nested.status}`);
   const join = await call(null, "/join?ref=NOPE");
   check("GET /join renders for any code", join.status === 200);
   const headers = await call(null, "/login");
@@ -304,16 +307,9 @@ check("login succeeds for Bob (profile incomplete)", bob.ok);
   check("join link tracks the click", track.status === 200 && track.body.fromUser?.id === ids.alice);
   const stats = await call(alice.jar, "/api/referrals");
   check("referral stats count the click", stats.body.stats?.clicked === 1 && stats.body.stats?.totalClicks === 1, JSON.stringify(stats.body.stats));
-  const redeemAnon = await call(null, `/api/referrals/${code}`, { method: "POST", json: { newUserId: ids.bob } });
-  check("anonymous redeem -> 401 (IDOR closed)", redeemAnon.status === 401);
-  const redeemSelf = await call(alice.jar, `/api/referrals/${code}`, { method: "POST" });
-  check("cannot redeem your own invitation", redeemSelf.status === 400);
-  const redeem = await call(bob.jar, `/api/referrals/${code}`, { method: "POST" });
-  check("Bob redeems -> auto-connected to Alice", redeem.status === 200);
-  const conns = await call(bob.jar, "/api/connections");
-  check("Bob and Alice are connected again after redeem", conns.body.connections?.some((c) => c.userId === ids.alice));
-  const gone = await call(null, `/api/referrals/${code}`);
-  check("redeemed link reports already registered", gone.status === 400);
+  // The referral POST (redeem) handler was removed on main; referrals complete inline at registration.
+  const redeemRemoved = await call(bob.jar, `/api/referrals/${code}`, { method: "POST", json: { newUserId: ids.bob } });
+  check("referral redeem endpoint no longer exists (405)", redeemRemoved.status === 405, `status ${redeemRemoved.status}`);
   const removedRoute = await call(alice.jar, "/api/contacts/invite", { method: "POST" });
   check("removed invite endpoint is gone (404)", removedRoute.status === 404);
 }

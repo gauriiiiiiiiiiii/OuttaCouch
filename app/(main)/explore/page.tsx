@@ -165,15 +165,6 @@ export default function ExplorePage() {
       <SectionCard
         title="Explore"
         description="Swipe to decide."
-        headerAction={
-          <button
-            type="button"
-            onClick={() => router.push("/explore/swipe")}
-            className="rounded-full border border-neutral-300 px-3 py-1.5 text-xs font-semibold hover:bg-neutral-50"
-          >
-            Full-screen swipe
-          </button>
-        }
       >
         {loading ? (
           <p className="text-sm text-neutral-600">Loading events...</p>

@@ -101,7 +101,10 @@ export default function ConnectionsPage() {
 
 
   const handleAccept = async (request: ConnectionRequest) => {
-    await fetch(`/api/connections/${request.id}/accept`, { method: "PUT" });
+    const res = await fetch(`/api/connections/${request.id}/accept`, { method: "PUT" });
+    if (!res.ok) {
+      return;
+    }
     setRequests((prev) => prev.filter((item) => item.id !== request.id));
     setConnections((prev) => [
       ...prev,
@@ -112,6 +115,8 @@ export default function ConnectionsPage() {
         photo: request.photo
       }
     ]);
+    // After accepting, go straight to the conversation.
+    router.push(`/chat/${request.id}`);
   };
 
   const handleDecline = async (request: ConnectionRequest) => {

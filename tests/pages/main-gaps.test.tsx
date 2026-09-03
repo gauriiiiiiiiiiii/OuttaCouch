@@ -344,8 +344,6 @@ describe("ExplorePage — demo card swipes", () => {
     await userEvent.click(screen.getByRole("button", { name: "Commit" }));
     expect(nav.push).toHaveBeenCalledWith("/events/dummy-2");
     expect(calls().some(([u]) => u === "/api/events/swipe")).toBe(false);
-    await userEvent.click(screen.getByRole("button", { name: "Full-screen swipe" }));
-    expect(nav.push).toHaveBeenCalledWith("/explore/swipe");
   });
 });
 

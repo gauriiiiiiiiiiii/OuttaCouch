@@ -42,7 +42,6 @@ import CreateEventPage from "@/app/(main)/events/new/page";
 import EditEventPage from "@/app/(main)/events/manage/[id]/edit/page";
 import HostDashboardPage from "@/app/(main)/events/manage/[id]/page";
 import ScannerPage from "@/app/(main)/events/manage/[id]/scanner/page";
-import SwipeModePage from "@/app/(main)/explore/swipe/page";
 
 const fetchMock = vi.fn();
 const json = (body: unknown, ok = true, status = ok ? 200 : 404) => Promise.resolve(new Response(JSON.stringify(body), { status }));
@@ -516,7 +515,7 @@ describe("HostDashboardPage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// /events/manage/[id]/scanner and /explore/swipe
+// /events/manage/[id]/scanner
 // ---------------------------------------------------------------------------
 describe("ScannerPage", () => {
   it("validates a pasted QR code and shows the outcome", async () => {
@@ -528,36 +527,5 @@ describe("ScannerPage", () => {
     expect(bodyOf("/api/tickets/validate", "POST")).toEqual({ qr_code: "QR-1", event_id: "e1" });
     await userEvent.click(screen.getByRole("button", { name: "Validate" }));
     expect(await screen.findByText("failed")).toBeInTheDocument();
-  });
-});
-
-describe("SwipeModePage", () => {
-  it("swipes through the feed and routes commits to the ticket section", async () => {
-    fetchMock.mockImplementation((url: string) =>
-      url === "/api/events/swipe" ? json({ status: "logged" }) : json({ events: [{ id: "e1", title: "Rooftop Jam", category: "Music", date: "x", location: "y", imageUrl: "https://img/1.jpg" }] })
-    );
-    render(<SwipeModePage />);
-    expect(await screen.findByRole("heading", { name: "Rooftop Jam" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Back/ })).toHaveAttribute("href", "/explore");
-    await userEvent.click(screen.getByRole("button", { name: "Commit" }));
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/events/e1#tickets"));
-    expect(bodyOf("/api/events/swipe", "POST")).toEqual({ event_id: "e1", action: "right" });
-  });
-
-  it("hides skipped events and shows the empty state", async () => {
-    fetchMock.mockImplementation((url: string) =>
-      url === "/api/events/swipe" ? json({ status: "logged" }) : json({ events: [{ id: "e1", title: "Only One", category: "Music", date: "x", location: "y", imageUrl: "https://img/1.jpg" }] })
-    );
-    render(<SwipeModePage />);
-    await screen.findByRole("heading", { name: "Only One" });
-    await userEvent.click(screen.getByRole("button", { name: "Skip" }));
-    expect(await screen.findByText("All caught up!")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Host your own" })).toHaveAttribute("href", "/events/new");
-  });
-
-  it("shows the empty state when the feed fails", async () => {
-    fetchMock.mockImplementation(() => json({}, false, 500));
-    render(<SwipeModePage />);
-    expect(await screen.findByText("All caught up!")).toBeInTheDocument();
   });
 });

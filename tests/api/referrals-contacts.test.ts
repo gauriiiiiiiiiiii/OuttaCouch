@@ -15,7 +15,7 @@ import { sendInvitationMessage } from "@/lib/twilioSms";
 import { generateReferralCode } from "@/lib/referralCode";
 import { authAs, sessionAs } from "../helpers/auth";
 import { GET as referralStats } from "@/app/api/referrals/route";
-import { GET as trackReferral, POST as redeemReferral } from "@/app/api/referrals/[code]/route";
+import { GET as trackReferral } from "@/app/api/referrals/[code]/route";
 import { POST as share } from "@/app/api/referrals/share/route";
 import { GET as listContacts, POST as importContacts } from "@/app/api/contacts/route";
 import { GET as syncedContacts, POST as syncContacts } from "@/app/api/contacts/sync/route";
@@ -100,101 +100,6 @@ describe("GET /api/referrals/:code", () => {
   it("returns 500 on a database failure", async () => {
     db.contactInvitation.findUnique.mockRejectedValue(new Error("down"));
     expect((await trackReferral(makeRequest("/api/referrals/ABCD1234"), ctx({ code: "ABCD1234" }))).status).toBe(500);
-  });
-});
-
-describe("POST /api/referrals/:code (redeem as the signed-in user)", () => {
-  const invitation = (overrides: Record<string, unknown> = {}) => ({
-    id: "i1",
-    fromUserId: "referrer",
-    toPhone: "+911",
-    status: "clicked",
-    referralCode: "ABCD1234",
-    ...overrides
-  });
-
-  beforeEach(() => {
-    db.contactInvitation.update.mockResolvedValue({});
-    db.contactImport.update.mockResolvedValue({});
-    db.connection.create.mockResolvedValue({});
-    db.notification.create.mockResolvedValue({});
-    db.referralLink.updateMany.mockResolvedValue({ count: 1 });
-  });
-
-  it("requires auth and ignores any user id in the body", async () => {
-    authAs(null);
-    const res = await redeemReferral(makeRequest("/api/referrals/ABCD1234", { body: { newUserId: "victim" } }), ctx({ code: "ABCD1234" }));
-    expect(res.status).toBe(401);
-    expect(db.contactInvitation.findUnique).not.toHaveBeenCalled();
-  });
-
-  it("404s unknown codes, 409s redeemed ones and 400s self-redemption", async () => {
-    authAs("me");
-    db.contactInvitation.findUnique.mockResolvedValueOnce(null);
-    expect((await redeemReferral(makeRequest("/api/referrals/X", { method: "POST" }), ctx({ code: "X" }))).status).toBe(404);
-    db.contactInvitation.findUnique.mockResolvedValueOnce(invitation({ status: "registered" }));
-    expect((await redeemReferral(makeRequest("/api/referrals/X", { method: "POST" }), ctx({ code: "X" }))).status).toBe(409);
-    db.contactInvitation.findUnique.mockResolvedValueOnce(invitation({ fromUserId: "me" }));
-    expect((await redeemReferral(makeRequest("/api/referrals/X", { method: "POST" }), ctx({ code: "X" }))).status).toBe(400);
-    expect(db.contactInvitation.update).not.toHaveBeenCalled();
-  });
-
-  it("links the invitation to the caller, connects both users and notifies them", async () => {
-    authAs("me");
-    db.contactInvitation.findUnique.mockResolvedValue(invitation());
-    db.contactImport.findFirst.mockResolvedValue({ id: "ci-1" });
-    db.connection.findFirst.mockResolvedValue(null);
-
-    const { status, body } = await readJson(
-      await redeemReferral(makeRequest("/api/referrals/abcd1234", { body: { newUserId: "victim" } }), ctx({ code: "abcd1234" }))
-    );
-    expect(status).toBe(200);
-    expect(body).toEqual({ message: "Registration completed", connection: { created: true } });
-    expect(db.contactInvitation.update).toHaveBeenCalledWith({
-      where: { referralCode: "ABCD1234" },
-      data: { status: "registered", registeredUserId: "me" }
-    });
-    expect(db.contactImport.update).toHaveBeenCalledWith({
-      where: { id: "ci-1" },
-      data: { status: "registered", registeredUserId: "me", registeredAt: expect.any(Date) }
-    });
-    expect(db.connection.create).toHaveBeenCalledWith({
-      data: { user1Id: "referrer", user2Id: "me", status: "accepted", acceptedAt: expect.any(Date) }
-    });
-    expect(db.notification.create).toHaveBeenCalledTimes(2);
-    expect(db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: "me", title: "Connected!" }) });
-    expect(db.referralLink.updateMany).toHaveBeenCalledWith({ where: { code: "ABCD1234", fromUserId: "referrer" }, data: { registrations: { increment: 1 } } });
-  });
-
-  it("does not touch an already-accepted connection", async () => {
-    authAs("me");
-    db.contactInvitation.findUnique.mockResolvedValue(invitation());
-    db.contactImport.findFirst.mockResolvedValue(null);
-    db.connection.findFirst.mockResolvedValue({ id: "existing", status: "accepted" });
-    const { body } = await readJson(await redeemReferral(makeRequest("/api/referrals/ABCD1234", { method: "POST" }), ctx({ code: "ABCD1234" })));
-    expect(body).toEqual({ message: "Registration completed", connection: { created: false } });
-    expect(db.connection.create).not.toHaveBeenCalled();
-    expect(db.connection.update).not.toHaveBeenCalled();
-    expect(db.notification.create).not.toHaveBeenCalled();
-  });
-
-  it("re-activates a removed or declined connection instead of leaving it dormant", async () => {
-    authAs("me");
-    db.contactInvitation.findUnique.mockResolvedValue(invitation());
-    db.contactImport.findFirst.mockResolvedValue(null);
-    db.connection.findFirst.mockResolvedValue({ id: "dormant", status: "removed" });
-    db.connection.update.mockResolvedValue({});
-    const { body } = await readJson(await redeemReferral(makeRequest("/api/referrals/ABCD1234", { method: "POST" }), ctx({ code: "ABCD1234" })));
-    expect(body).toEqual({ message: "Registration completed", connection: { created: true } });
-    expect(db.connection.update).toHaveBeenCalledWith({ where: { id: "dormant" }, data: { status: "accepted", acceptedAt: expect.any(Date) } });
-    expect(db.connection.create).not.toHaveBeenCalled();
-    expect(db.notification.create).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns 500 on a database failure", async () => {
-    authAs("me");
-    db.contactInvitation.findUnique.mockRejectedValue(new Error("down"));
-    expect((await redeemReferral(makeRequest("/api/referrals/X", { method: "POST" }), ctx({ code: "X" }))).status).toBe(500);
   });
 });
 

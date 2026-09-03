@@ -95,7 +95,7 @@ DATABASE_URL=postgresql://... DATABASE_SSL=false CRON_SECRET=smoke-cron npm run 
 BASE=http://localhost:3000 CRON_SECRET=smoke-cron npm run e2e:smoke
 ```
 
-Seeded logins: `host@test.local`, `alice@test.local`, `bob@test.local` (password `Passw0rd!`). The seed refuses Supabase hosts unless `E2E_ALLOW_REMOTE=true`.
+Seeded logins: `host@test.local`, `alice@test.local`, `bob@test.local`. Their shared password is the value of `E2E_LOGIN_SECRET` (a fixed dev default is used when unset; set the same value for seed and smoke). The seed refuses Supabase hosts unless `E2E_ALLOW_REMOTE=true`.
 
 ## Database
 
