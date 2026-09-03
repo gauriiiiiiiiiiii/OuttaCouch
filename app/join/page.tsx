@@ -104,7 +104,7 @@ function JoinContent() {
                 invited you to join
               </p>
               <p className="mt-1 text-sm text-neutral-500">
-                You'll connect automatically when you sign up.
+                You&apos;ll connect automatically when you sign up.
               </p>
             </div>
 

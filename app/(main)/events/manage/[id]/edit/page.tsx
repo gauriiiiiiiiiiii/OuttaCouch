@@ -484,7 +484,7 @@ export default function EditEventPage() {
                   <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Date</p>
                   <p className="font-semibold text-ink">
                     {eventDate ? `${eventDate} ${startTime || ""}`.trim() : "Not set"}
-                    {endDate ? ` → ${endDate} ${endTime || ""}`.trim() : ""}
+                    {endDate ? ` → ${endDate} ${endTime || ""}`.trimEnd() : ""}
                   </p>
                 </div>
                 <div>

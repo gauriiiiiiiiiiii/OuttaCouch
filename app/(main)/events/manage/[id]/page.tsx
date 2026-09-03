@@ -28,8 +28,10 @@ type HostEvent = {
   title: string;
   date: string;
   attendeeCount: number;
-  attendees: Attendee[];
-  revenueTotal: number;
+  isHost?: boolean;
+  // Host-only fields: absent when a non-host loads the event.
+  attendees?: Attendee[];
+  revenueTotal?: number;
   analytics?: {
     attendeeSeries: { date: string; count: number }[];
     revenueSeries: { date: string; total: number }[];
@@ -61,7 +63,8 @@ export default function HostDashboardPage() {
       const res = await fetch(`/api/events/${id}`);
       const data = res.ok ? ((await res.json()) as HostEvent) : null;
       if (active) {
-        setEvent(data);
+        // Only the host receives the roster/revenue payload.
+        setEvent(data && data.isHost === false ? null : data);
         setLoading(false);
       }
     };
@@ -165,12 +168,15 @@ export default function HostDashboardPage() {
     router.push("/events/manage");
   };
 
+  const attendees = event?.attendees ?? [];
+  const revenueTotal = event?.revenueTotal ?? 0;
+
   const handleDownloadAttendees = () => {
     if (!event) {
       return;
     }
     const header = "Name,Status";
-    const rows = event.attendees.map((attendee) =>
+    const rows = attendees.map((attendee) =>
       `${attendee.name.replace(/,/g, " ")},${attendee.status}`
     );
     const csv = [header, ...rows].join("\n");
@@ -281,13 +287,13 @@ export default function HostDashboardPage() {
               <div className="rounded-2xl border border-neutral-200 bg-white/95 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">Revenue</p>
                 <p className="mt-2 text-2xl font-semibold text-ink">
-                  ₹{event.revenueTotal.toFixed(2)}
+                  ₹{revenueTotal.toFixed(2)}
                 </p>
               </div>
               <div className="rounded-2xl border border-neutral-200 bg-white/95 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">Tickets scanned</p>
                 <p className="mt-2 text-2xl font-semibold text-ink">
-                  {event.attendees.filter((attendee) => attendee.status === "attended").length}
+                  {attendees.filter((attendee) => attendee.status === "attended").length}
                 </p>
               </div>
             </div>
@@ -295,10 +301,10 @@ export default function HostDashboardPage() {
           <section className="rounded-2xl border border-neutral-200 bg-white/90 p-6">
             <h3 className="text-base font-semibold">Attendees</h3>
             <div className="mt-4 space-y-2">
-              {event.attendees.length === 0 ? (
+              {attendees.length === 0 ? (
                 <p className="text-sm text-neutral-600">No attendees yet.</p>
               ) : (
-                event.attendees.map((attendee) => (
+                attendees.map((attendee) => (
                   <div
                     key={attendee.id}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-white/95 px-4 py-3 text-sm"

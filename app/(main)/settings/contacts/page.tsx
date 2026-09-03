@@ -24,6 +24,23 @@ type Stats = {
   pending: number;
 };
 
+/** Web Contact Picker API (Chrome Android, Safari iOS 16+). Not in lib.dom yet. */
+type ContactInfo = {
+  name?: string[];
+  tel?: string[];
+  email?: string[];
+};
+
+type ContactsManager = {
+  select: (properties: string[], options?: { multiple?: boolean }) => Promise<ContactInfo[]>;
+};
+
+const getContactsManager = (): ContactsManager | null => {
+  if (typeof navigator === "undefined") return null;
+  const manager = (navigator as Navigator & { contacts?: ContactsManager }).contacts;
+  return manager ?? null;
+};
+
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -48,17 +65,16 @@ export default function ContactsPage() {
 
   const syncContacts = async () => {
     setSyncError(null);
-    if (!("contacts" in navigator)) {
+    const manager = getContactsManager();
+    if (!manager) {
       setSyncError("Contact picker not supported in this browser.");
       return;
     }
     setSyncing(true);
     try {
-      const props = await (navigator as any).contacts.select(["name", "tel"], {
-        multiple: true
-      });
-      const mapped = (props as any[]).flatMap((entry: any) =>
-        (entry.tel ?? []).map((tel: string) => ({
+      const props = await manager.select(["name", "tel"], { multiple: true });
+      const mapped = props.flatMap((entry) =>
+        (entry.tel ?? []).map((tel) => ({
           name: entry.name?.[0] ?? "Unknown",
           phone: tel
         }))
@@ -87,12 +103,16 @@ export default function ContactsPage() {
 
   const inviteContact = async (contact: Contact) => {
     setInviting((prev) => new Set([...prev, contact.id]));
+    setSyncError(null);
     try {
-      await fetch("/api/referrals/share", {
+      const res = await fetch("/api/referrals/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contactIds: [contact.id], channel: "sms" })
       });
+      if (!res.ok) {
+        throw new Error("Invite failed");
+      }
       setContacts((prev) =>
         prev.map((c) =>
           c.id === contact.id
@@ -105,6 +125,8 @@ export default function ContactsPage() {
           ? { ...prev, invited: prev.invited + 1, pending: prev.pending - 1 }
           : prev
       );
+    } catch {
+      setSyncError("Could not send the invite. Try again.");
     } finally {
       setInviting((prev) => {
         const next = new Set(prev);
@@ -186,7 +208,7 @@ export default function ContactsPage() {
               <p className="text-sm text-red-600">{syncError}</p>
             ) : null}
           </div>
-          {!("contacts" in navigator) ? (
+          {!getContactsManager() ? (
             <p className="mt-2 text-xs text-neutral-500">
               Contact syncing requires a supported mobile browser (Chrome on Android,
               Safari on iOS 16+).

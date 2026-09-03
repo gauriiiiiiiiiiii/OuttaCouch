@@ -1,33 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion, useMotionValue, useTransform } from "framer-motion";
 import type { EventSummary } from "@/types";
+import { SWIPE_THRESHOLD_PX, isTapNotDrag, swipeDirectionForOffset } from "@/lib/swipeGesture";
 
 type SwipeStackProps = {
   events: EventSummary[];
   onSwipe: (event: EventSummary, action: "left" | "right") => void;
 };
 
+/**
+ * Card stack. Dismissal is tracked by event id rather than a positional index so
+ * that a parent which removes the swiped event from `events` (as the explore
+ * pages do) does not cause a second card to be skipped.
+ */
 export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
   const router = useRouter();
-  const [index, setIndex] = useState(0);
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [swipeAction, setSwipeAction] = useState<"left" | "right" | null>(null);
-  const current = events[index];
-  const next = events[index + 1];
-  const threshold = 120;
+  const swipedIdRef = useRef<string | null>(null);
+  const visible = events.filter((event) => !dismissed.has(event.id));
+  const current = visible[0];
+  const next = visible[1];
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-12, 0, 12]);
   const likeOpacity = useTransform(x, [40, 120], [0, 1]);
   const nopeOpacity = useTransform(x, [-120, -40], [1, 0]);
 
+  // Only animate the card that was actually swiped. If the parent already
+  // removed it, the next card must appear in place without flying off.
+  const isSwipingCurrent = swipeAction !== null && current?.id === swipedIdRef.current;
+
+  useEffect(() => {
+    if (swipeAction && !isSwipingCurrent) {
+      setSwipeAction(null);
+      swipedIdRef.current = null;
+      x.set(0);
+      y.set(0);
+    }
+  }, [swipeAction, isSwipingCurrent, x, y]);
+
   const handleSwipe = (action: "left" | "right") => {
     if (!current) {
       return;
     }
+    swipedIdRef.current = current.id;
     onSwipe(current, action);
     setSwipeAction(action);
   };
@@ -36,9 +57,7 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
     if (!current || current.id.startsWith("dummy")) {
       return;
     }
-    const deltaX = Math.abs(x.get());
-    const deltaY = Math.abs(y.get());
-    if (deltaX > 4 || deltaY > 4) {
+    if (!isTapNotDrag(x.get(), y.get())) {
       return;
     }
     router.push(`/events/${current.id}`);
@@ -65,32 +84,33 @@ export default function SwipeStack({ events, onSwipe }: SwipeStackProps) {
         dragElastic={0.2}
         style={{ x, y, rotate }}
         animate={
-          swipeAction === "right"
+          isSwipingCurrent && swipeAction === "right"
             ? { x: 600, y: 0, rotate: 18 }
-            : swipeAction === "left"
+            : isSwipingCurrent && swipeAction === "left"
               ? { x: -600, y: 0, rotate: -18 }
               : { x: 0, y: 0, rotate: 0 }
         }
         transition={{ type: "spring", stiffness: 260, damping: 24 }}
         onDragEnd={(_, info) => {
-          const { offset } = info;
-          if (offset.x > threshold) {
-            handleSwipe("right");
-            return;
-          }
-          if (offset.x < -threshold) {
-            handleSwipe("left");
+          // Gesture-only path (pointer drag); the decision itself is unit-tested in lib/swipeGesture.
+          const direction = swipeDirectionForOffset(info.offset.x, SWIPE_THRESHOLD_PX);
+          if (direction) {
+            handleSwipe(direction);
             return;
           }
           x.set(0);
           y.set(0);
         }}
         onAnimationComplete={() => {
-          if (swipeAction) {
+          if (isSwipingCurrent) {
+            const swipedId = swipedIdRef.current;
             setSwipeAction(null);
+            swipedIdRef.current = null;
             x.set(0);
             y.set(0);
-            setIndex((prev) => Math.min(prev + 1, events.length));
+            if (swipedId) {
+              setDismissed((prev) => new Set([...prev, swipedId]));
+            }
           }
         }}
       >
