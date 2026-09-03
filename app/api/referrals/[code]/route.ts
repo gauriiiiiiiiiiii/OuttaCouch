@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -75,8 +76,11 @@ export async function GET(
 }
 
 /**
- * Complete registration process for referred user
- * Called after signup with referral code
+ * Complete a referral for the *signed-in* user.
+ *
+ * The normal signup path completes referrals inline (see /api/auth/register);
+ * this endpoint exists for users who registered without the code and redeem it
+ * afterwards. The redeeming user is always the caller, never a body value.
  */
 export async function POST(
   request: NextRequest,
@@ -84,14 +88,14 @@ export async function POST(
 ) {
   const { code } = await params;
   const normalizedCode = code.toUpperCase();
-  const body = (await request.json()) as { newUserId: string };
 
-  if (!body.newUserId) {
-    return NextResponse.json({ error: "Missing user ID" }, { status: 400 });
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const newUserId = token.sub;
 
   try {
-    // Update invitation with registered user
     const invitation = await prisma.contactInvitation.findUnique({
       where: { referralCode: normalizedCode }
     });
@@ -100,12 +104,19 @@ export async function POST(
       return NextResponse.json({ error: "Invalid referral code" }, { status: 404 });
     }
 
-      await prisma.contactInvitation.update({
-        where: { referralCode: normalizedCode },
+    if (invitation.status === "registered") {
+      return NextResponse.json({ error: "Already registered via this link" }, { status: 409 });
+    }
+
+    if (invitation.fromUserId === newUserId) {
+      return NextResponse.json({ error: "Cannot redeem your own invitation" }, { status: 400 });
+    }
+
+    await prisma.contactInvitation.update({
+      where: { referralCode: normalizedCode },
       data: {
         status: "registered",
-        registeredUserId: body.newUserId,
-        updatedAt: new Date()
+        registeredUserId: newUserId
       }
     });
 
@@ -122,32 +133,43 @@ export async function POST(
         where: { id: contactImport.id },
         data: {
           status: "registered",
-          registeredUserId: body.newUserId,
+          registeredUserId: newUserId,
           registeredAt: new Date()
         }
       });
     }
 
-    // Create automatic connection between referrer and referred user
+    // Connect referrer and referred user. A previously removed/declined/pending
+    // connection is re-activated rather than left dormant.
     const existingConnection = await prisma.connection.findFirst({
       where: {
         OR: [
-          { user1Id: invitation.fromUserId, user2Id: body.newUserId },
-          { user1Id: body.newUserId, user2Id: invitation.fromUserId }
+          { user1Id: invitation.fromUserId, user2Id: newUserId },
+          { user1Id: newUserId, user2Id: invitation.fromUserId }
         ]
       }
     });
 
+    let connected = false;
     if (!existingConnection) {
       await prisma.connection.create({
         data: {
           user1Id: invitation.fromUserId,
-          user2Id: body.newUserId,
+          user2Id: newUserId,
           status: "accepted",
           acceptedAt: new Date()
         }
       });
+      connected = true;
+    } else if (existingConnection.status !== "accepted") {
+      await prisma.connection.update({
+        where: { id: existingConnection.id },
+        data: { status: "accepted", acceptedAt: new Date() }
+      });
+      connected = true;
+    }
 
+    if (connected) {
       // Create welcome notifications
       await prisma.notification.create({
         data: {
@@ -160,7 +182,7 @@ export async function POST(
 
       await prisma.notification.create({
         data: {
-          userId: body.newUserId,
+          userId: newUserId,
           title: "Connected!",
           body: "You're now connected with the person who invited you.",
           link: "/connections"
@@ -179,7 +201,7 @@ export async function POST(
 
     return NextResponse.json({
       message: "Registration completed",
-      connection: { created: true }
+      connection: { created: connected }
     });
   } catch (error) {
     console.error("Referral code POST error", error);

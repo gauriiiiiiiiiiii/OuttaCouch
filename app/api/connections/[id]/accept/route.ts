@@ -21,6 +21,10 @@ export async function PUT(
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
+  if (connection.status !== "pending") {
+    return NextResponse.json({ error: "Request is not pending", status: connection.status }, { status: 409 });
+  }
+
   const updated = await prisma.connection.update({
     where: { id },
     data: { status: "accepted", acceptedAt: new Date() }

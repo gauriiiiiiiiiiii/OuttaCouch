@@ -47,8 +47,14 @@ export async function POST(
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
-  const body = (await request.json()) as { content?: string };
-  if (!body.content) {
+  // Only live connections can exchange messages; removed/declined/pending cannot.
+  if (connection.status !== "accepted") {
+    return NextResponse.json({ error: "Connection not active" }, { status: 403 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as { content?: unknown };
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  if (!content) {
     return NextResponse.json({ error: "Missing content" }, { status: 400 });
   }
 
@@ -56,7 +62,7 @@ export async function POST(
     data: {
       connectionId,
       senderId: token.sub,
-      content: body.content,
+      content,
       type: "text"
     }
   });

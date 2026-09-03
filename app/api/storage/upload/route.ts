@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { buildObjectPath, isValidFolder } from "@/lib/storagePath";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,10 @@ export async function POST(request: NextRequest) {
 
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: "File required" }, { status: 400 });
+  }
+
+  if (folder !== null && (typeof folder !== "string" || !isValidFolder(folder))) {
+    return NextResponse.json({ error: "Invalid folder" }, { status: 400 });
   }
 
   // Size limit: 10 MB
@@ -67,13 +72,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Supabase client unavailable" }, { status: 500 });
   }
 
-  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
-  const filePath = folder && typeof folder === "string" ? `${folder}/${fileName}` : fileName;
+  // Random, user-scoped object key: uploads can never collide with or overwrite
+  // another user's file, and upsert is unnecessary.
+  const filePath = buildObjectPath({ folder: folder as string | null, userId: token.sub, extension });
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from(bucket)
-    .upload(filePath, buffer, { upsert: true, contentType: file.type || undefined });
+    .upload(filePath, buffer, { upsert: false, contentType: file.type || undefined });
 
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 400 });

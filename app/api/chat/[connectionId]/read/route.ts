@@ -13,6 +13,14 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const connection = await prisma.connection.findUnique({
+    where: { id: connectionId }
+  });
+
+  if (!connection || (connection.user1Id !== token.sub && connection.user2Id !== token.sub)) {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
+
   await prisma.message.updateMany({
     where: {
       connectionId,

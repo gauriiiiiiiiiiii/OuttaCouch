@@ -3,15 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/authOptions";
 import { sendInvitationMessage } from "@/lib/twilioSms";
-
-function generateReferralCode(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
+import { normalizeContact } from "@/lib/normalizeContact";
+import { generateReferralCode } from "@/lib/referralCode";
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -42,7 +35,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    let phonesToInvite: string[] = body.phones || [];
+    // Raw phones from the client are normalised; unparseable ones are dropped.
+    let phonesToInvite: string[] = (body.phones || [])
+      .map((phone) => normalizeContact(phone))
+      .filter((phone) => phone && !phone.includes("@"));
 
     if (body.contactIds?.length) {
       const contacts = await prisma.contactImport.findMany({
@@ -57,7 +53,11 @@ export async function POST(request: NextRequest) {
 
     phonesToInvite = [...new Set(phonesToInvite)];
 
-    const channel = body.channel || "sms";
+    if (phonesToInvite.length === 0) {
+      return NextResponse.json({ error: "No valid phone numbers to invite" }, { status: 400 });
+    }
+
+    const channel = body.channel === "whatsapp" ? "whatsapp" : "sms";
     const invitations = [];
 
     for (const phone of phonesToInvite) {

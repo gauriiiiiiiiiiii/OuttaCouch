@@ -3,10 +3,14 @@ import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 import { isSameOrigin } from "@/lib/csrf";
 
+type SwipeAction = "right" | "left";
+
 type SwipeBody = {
   event_id: string;
-  action: "right" | "left" | "up" | "down";
+  action: SwipeAction;
 };
+
+const allowedActions = new Set<SwipeAction>(["right", "left"]);
 
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) {
@@ -21,6 +25,10 @@ export async function POST(request: NextRequest) {
   const body = (await request.json()) as SwipeBody;
   if (!body.event_id || !body.action) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  if (!allowedActions.has(body.action)) {
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
 
   const existing = await prisma.eventSwipe.findFirst({
