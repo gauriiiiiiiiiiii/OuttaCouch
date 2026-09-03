@@ -6,6 +6,7 @@ out
 dist
 coverage
 .cache
+tsconfig.tsbuildinfo
 
 # Environment files
 .env

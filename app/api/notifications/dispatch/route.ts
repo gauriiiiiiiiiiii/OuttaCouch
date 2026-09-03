@@ -21,32 +21,34 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date();
-  const due = await prisma.notificationSchedule.findMany({
-    where: { sentAt: null, sendAt: { lte: now } },
-    orderBy: { sendAt: "asc" },
-    take: 200
-  });
 
-  if (due.length === 0) {
-    return NextResponse.json({ status: "ok", sent: 0 });
-  }
+  // Claim-then-fan-out inside one transaction. The claim is a single
+  // conditional UPDATE ... RETURNING, so two overlapping cron runs cannot both
+  // take the same rows: the second sees sentAt already set and claims nothing.
+  // If creating the notifications fails, the claim rolls back with it.
+  const sent = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.notificationSchedule.updateManyAndReturn({
+      where: { sentAt: null, sendAt: { lte: now } },
+      data: { sentAt: now }
+    });
 
-  await prisma.$transaction([
-    prisma.notification.createMany({
-      data: due.map((item) => ({
+    if (claimed.length === 0) {
+      return 0;
+    }
+
+    await tx.notification.createMany({
+      data: claimed.map((item) => ({
         userId: item.userId,
         title: item.title,
         body: item.body,
         link: item.link
       }))
-    }),
-    prisma.notificationSchedule.updateMany({
-      where: { id: { in: due.map((item) => item.id) } },
-      data: { sentAt: now }
-    })
-  ]);
+    });
 
-  return NextResponse.json({ status: "ok", sent: due.length });
+    return claimed.length;
+  });
+
+  return NextResponse.json({ status: "ok", sent });
 }
 
 // Vercel Cron invokes with GET

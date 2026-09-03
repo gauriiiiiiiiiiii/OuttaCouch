@@ -9,8 +9,6 @@ import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
 import { StorageService } from "@/lib/services/storage";
 
-export const dynamic = "force-dynamic";
-
 const preferenceOptions = [
   "Music",
   "Sports",

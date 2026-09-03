@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeContact } from "@/lib/normalizeContact";
 import { rateLimit, getClientIp } from "@/lib/rateLimit";
 import { isSameOrigin } from "@/lib/csrf";
+import { validatePassword } from "@/lib/password";
 
 type RegisterBody = {
   contact: string;
@@ -36,6 +37,11 @@ export async function POST(request: Request) {
 
   if (!contact || !body.password || !body.token) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  const passwordError = validatePassword(body.password);
+  if (passwordError) {
+    return NextResponse.json({ error: passwordError }, { status: 400 });
   }
 
   const otpToken = await prisma.otpToken.findUnique({

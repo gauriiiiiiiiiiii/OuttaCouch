@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { normalizeContact } from "@/lib/normalizeContact";
@@ -16,8 +17,9 @@ type SendOtpBody = {
 const otpLifetimeMs = 5 * 60 * 1000;
 const resendCooldownMs = 30 * 1000;
 
+/** Six-digit code from a CSPRNG (never Math.random for a credential). */
 function generateOtpCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 1000000).toString();
 }
 
 export async function POST(request: Request) {

@@ -222,16 +222,7 @@ export default function EventDetailPage() {
       const res = await fetch(`/api/events/${id}/commit`, { method: "POST" });
       const data = (await res.json()) as { status?: string; error?: string };
 
-      if (data.status === "committed" && event?.eventDate) {
-        const pending = {
-          id: event.id,
-          title: event.title,
-          date: event.eventDate,
-          category: event.category,
-          status: "committed",
-          imageUrl: event.coverImageUrl
-        };
-        localStorage.setItem("calendarPendingEvent", JSON.stringify(pending));
+      if (data.status === "committed") {
         setCommitStatus("committed");
       } else if (data.status === "already-committed") {
         setCommitStatus("Already added");

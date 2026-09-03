@@ -13,13 +13,23 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  if (userId === token.sub) {
+    return NextResponse.json({ error: "Cannot connect with yourself" }, { status: 400 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as { sharedEventId?: string | null };
 
   const targetUser = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, displayName: true }
+    select: { id: true, email: true, displayName: true, isDeactivated: true }
   });
 
+  if (!targetUser || targetUser.isDeactivated) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  // One lookup covers both directions, so a pending request from the target
+  // is handled here (auto-accept) rather than by a second query.
   const existing = await prisma.connection.findFirst({
     where: {
       OR: [
@@ -68,50 +78,6 @@ export async function POST(
     return NextResponse.json({ status: existing.status, id: existing.id });
   }
 
-  const reciprocal = await prisma.connection.findFirst({
-    where: {
-      user1Id: userId,
-      user2Id: token.sub,
-      status: "pending"
-    }
-  });
-
-  if (reciprocal) {
-    const updated = await prisma.connection.update({
-      where: { id: reciprocal.id },
-      data: { status: "accepted", acceptedAt: new Date() }
-    });
-    const existingMessage = await prisma.message.findFirst({
-      where: { connectionId: updated.id }
-    });
-    if (!existingMessage) {
-      await prisma.message.create({
-        data: {
-          connectionId: updated.id,
-          senderId: token.sub,
-          content: "Connection accepted. Start the conversation!",
-          type: "text"
-        }
-      });
-    }
-    await prisma.notification.create({
-      data: {
-        userId: reciprocal.user1Id,
-        title: "Connection accepted",
-        body: "Your connection request was accepted.",
-        link: "/connections"
-      }
-    });
-    if (targetUser?.email) {
-      await sendNotificationEmail({
-        to: targetUser.email,
-        subject: "Connection accepted",
-        text: "Your connection request was accepted on OUTTACOUCH."
-      });
-    }
-    return NextResponse.json({ status: updated.status, id: updated.id });
-  }
-
   const connection = await prisma.connection.create({
     data: {
       user1Id: token.sub,
@@ -130,7 +96,7 @@ export async function POST(
     }
   });
 
-  if (targetUser?.email) {
+  if (targetUser.email) {
     await sendNotificationEmail({
       to: targetUser.email,
       subject: "New connection request",

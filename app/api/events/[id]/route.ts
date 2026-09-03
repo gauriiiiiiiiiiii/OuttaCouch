@@ -58,6 +58,25 @@ export async function GET(
     total
   }));
 
+  // Attendee roster, revenue and analytics are host-only. Everyone else gets
+  // the public detail plus an anonymised "going" preview.
+  const isHost = !!token?.sub && token.sub === event.hostId;
+  const hostOnly = isHost
+    ? {
+        attendees: event.attendees.map((attendee: (typeof event.attendees)[number]) => ({
+          id: attendee.id,
+          name: attendee.user.displayName ?? attendee.user.email ?? "User",
+          status: attendee.status,
+          ticketId: attendee.ticketId
+        })),
+        revenueTotal,
+        analytics: {
+          attendeeSeries,
+          revenueSeries
+        }
+      }
+    : {};
+
   return NextResponse.json({
     id: event.id,
     title: event.title,
@@ -83,7 +102,8 @@ export async function GET(
     ticketPrice: event.ticketPrice?.toString() ?? null,
     host: {
       id: event.host.id,
-      name: event.host.displayName ?? event.host.email ?? "Host",
+      // Never surface the host's email as a public display name.
+      name: event.host.displayName ?? "Host",
       photo: event.host.profilePhotoUrl
     },
     attendeeCount: event._count.attendees,
@@ -91,20 +111,11 @@ export async function GET(
       ? event.attendees.some((a) => a.userId === token.sub)
       : false,
     goingList: event.attendees.slice(0, 10).map((a) => ({
-      name: a.user.displayName ?? a.user.email ?? "Guest",
+      name: a.user.displayName ?? "Guest",
       photo: a.user.profilePhotoUrl
     })),
-    attendees: event.attendees.map((attendee: (typeof event.attendees)[number]) => ({
-      id: attendee.id,
-      name: attendee.user.displayName ?? attendee.user.email ?? "User",
-      status: attendee.status,
-      ticketId: attendee.ticketId
-    })),
-    revenueTotal,
-    analytics: {
-      attendeeSeries,
-      revenueSeries
-    }
+    isHost,
+    ...hostOnly
   });
 }
 

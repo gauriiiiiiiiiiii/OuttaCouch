@@ -64,27 +64,6 @@ export default function ProfilePage() {
           : { connections: [] as ConnectionList };
 
         if (active) {
-          const pendingRaw = localStorage.getItem("calendarPendingEvent");
-          if (pendingRaw) {
-            try {
-              const pending = JSON.parse(pendingRaw) as {
-                id: string;
-                title: string;
-                date: string;
-                category: string;
-                status: string;
-                imageUrl?: string | null;
-              };
-              const exists = json.privateCalendar.some((event) => event.id === pending.id);
-              if (!exists) {
-                json.privateCalendar = [pending, ...json.privateCalendar];
-              } else {
-                localStorage.removeItem("calendarPendingEvent");
-              }
-            } catch {
-              // ignore parse errors
-            }
-          }
           setData(json);
           setConnections(connectionsData.connections ?? []);
         }
@@ -136,7 +115,7 @@ export default function ProfilePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
               Quick actions
             </p>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
             <button
               className="group rounded-2xl border border-neutral-200 bg-white/90 px-4 py-4 text-left text-sm font-semibold shadow-sm transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
               onClick={() => router.push("/profile/edit")}
@@ -144,6 +123,15 @@ export default function ProfilePage() {
               Edit profile
               <p className="mt-1 text-xs text-neutral-500 group-hover:text-neutral-700">
                 Update your photo, bio, and interests.
+              </p>
+            </button>
+            <button
+              className="group rounded-2xl border border-neutral-200 bg-white/90 px-4 py-4 text-left text-sm font-semibold shadow-sm transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
+              onClick={() => router.push("/profile/tickets")}
+            >
+              My tickets
+              <p className="mt-1 text-xs text-neutral-500 group-hover:text-neutral-700">
+                QR codes for paid events.
               </p>
             </button>
             <button

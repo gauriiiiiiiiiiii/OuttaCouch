@@ -104,7 +104,10 @@ export async function PUT(
   }
 
   if (body.isCover) {
-    const image = await prisma.eventImage.findUnique({ where: { id: body.imageId } });
+    // Scope by eventId so a host cannot promote another event's image.
+    const image = await prisma.eventImage.findFirst({
+      where: { id: body.imageId, eventId: id }
+    });
     if (!image) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -178,6 +181,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Missing imageId" }, { status: 400 });
   }
 
-  await prisma.eventImage.delete({ where: { id: body.imageId } });
+  // deleteMany scoped by eventId: a host can only remove their own event's images.
+  const result = await prisma.eventImage.deleteMany({
+    where: { id: body.imageId, eventId: id }
+  });
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   return NextResponse.json({ status: "deleted" });
 }

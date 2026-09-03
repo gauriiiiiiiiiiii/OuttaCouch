@@ -28,7 +28,7 @@ export default function MemoriesGrid({ items }: { items: MemoryItem[] }) {
           key={item.id}
           className="overflow-hidden rounded-2xl border border-neutral-200 bg-white/90 shadow-sm"
         >
-          <div className="relative aspect-[4/3] bg-gradient-to-br from-sand to-white">
+          <div className="relative aspect-[4/3] bg-gradient-to-br from-parchment to-white">
             {item.imageUrl ? (
               <Image
                 src={item.imageUrl}

@@ -59,21 +59,17 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: "jwt" },
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user }) {
       if (user) {
         token.sub = user.id;
         token.profileComplete = (user as { profileComplete?: boolean })
           .profileComplete;
         token.isDeactivated = (user as { isDeactivated?: boolean }).isDeactivated;
-      } else if (trigger === "update" && session) {
-        const nextSession = session as { profileComplete?: boolean; isDeactivated?: boolean };
-        if (typeof nextSession.profileComplete === "boolean") {
-          token.profileComplete = nextSession.profileComplete;
-        }
-        if (typeof nextSession.isDeactivated === "boolean") {
-          token.isDeactivated = nextSession.isDeactivated;
-        }
       } else if (token.sub) {
+        // Covers both the periodic refresh and `session.update()` from the client.
+        // The database is the only source of truth for these claims; values
+        // passed by the client via update() are deliberately ignored so a user
+        // cannot mark their own profile complete or un-deactivate themselves.
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
           select: { profileComplete: true, isDeactivated: true }

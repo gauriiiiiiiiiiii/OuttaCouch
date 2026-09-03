@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { addDays, format } from "date-fns";
 import { useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
 import SectionCard from "@/components/ui/SectionCard";
@@ -43,41 +44,45 @@ export default function ExplorePage() {
     };
   }, []);
 
-  const dummyEvents: EventSummary[] = [
-    {
-      id: "dummy-1",
-      title: "Sunset Rooftop Jam",
-      category: "Music",
-      date: "Mar 18, 2026",
-      location: "Skyline Terrace",
-      lat: 28.6323,
-      lng: 77.2196,
-      imageUrl:
-        "https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=1200&q=80"
-    },
-    {
-      id: "dummy-2",
-      title: "Midnight Food Crawl",
-      category: "Food",
-      date: "Mar 21, 2026",
-      location: "Old Market District",
-      lat: 28.6505,
-      lng: 77.2345,
-      imageUrl:
-        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=80"
-    },
-    {
-      id: "dummy-3",
-      title: "Morning Trail Sprint",
-      category: "Outdoors",
-      date: "Mar 24, 2026",
-      location: "Riverbend Park",
-      lat: 28.6122,
-      lng: 77.2414,
-      imageUrl:
-        "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80"
-    }
-  ];
+  // Placeholder cards for an empty feed. Dates are relative so they never look stale.
+  const dummyEvents = useMemo<EventSummary[]>(() => {
+    const soon = (days: number) => format(addDays(new Date(), days), "MMM d, yyyy");
+    return [
+      {
+        id: "dummy-1",
+        title: "Sunset Rooftop Jam",
+        category: "Music",
+        date: soon(3),
+        location: "Skyline Terrace",
+        lat: 28.6323,
+        lng: 77.2196,
+        imageUrl:
+          "https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=1200&q=80"
+      },
+      {
+        id: "dummy-2",
+        title: "Midnight Food Crawl",
+        category: "Food",
+        date: soon(6),
+        location: "Old Market District",
+        lat: 28.6505,
+        lng: 77.2345,
+        imageUrl:
+          "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=80"
+      },
+      {
+        id: "dummy-3",
+        title: "Morning Trail Sprint",
+        category: "Outdoors",
+        date: soon(9),
+        location: "Riverbend Park",
+        lat: 28.6122,
+        lng: 77.2414,
+        imageUrl:
+          "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80"
+      }
+    ];
+  }, []);
 
   const baseEvents = events.length > 0 ? events : dummyEvents;
   const categories = useMemo(() => {

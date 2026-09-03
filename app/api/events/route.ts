@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
       : null;
 
     const { searchParams } = new URL(request.url);
-    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+    const parsedPage = parseInt(searchParams.get("page") ?? "1", 10);
+    // NaN (e.g. ?page=abc) must not reach Prisma as a skip value.
+    const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
     const pageSize = 50;
     const skip = (page - 1) * pageSize;
 

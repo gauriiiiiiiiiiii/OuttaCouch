@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
+import { escapeHtml } from "@/lib/escapeHtml";
 
 const markerIcon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -78,11 +79,12 @@ export default function EventMap({
     }).addTo(map);
 
     validEvents.forEach((event) => {
+      // Popup content is raw HTML: escape user-supplied title/venue (stored XSS).
       L.marker([Number(event.lat), Number(event.lng)], { icon: markerIcon })
         .bindPopup(
-          `<div class="space-y-1"><div class="text-sm font-semibold">${event.title}</div>${
+          `<div class="space-y-1"><div class="text-sm font-semibold">${escapeHtml(event.title)}</div>${
             event.location
-              ? `<div class="text-xs text-gray-500">${event.location}</div>`
+              ? `<div class="text-xs text-gray-500">${escapeHtml(event.location)}</div>`
               : ""
           }</div>`
         )

@@ -99,7 +99,9 @@ export async function GET(
       prisma.eventAttendee.findMany({
         where: {
           userId: user.id,
-          status: { in: ["committed", "attended"] }
+          status: { in: ["committed", "attended"] },
+          // Other viewers only ever see attendance at public events.
+          ...(isSelf ? {} : { event: { visibility: "public" } })
         },
         include: {
           event: {

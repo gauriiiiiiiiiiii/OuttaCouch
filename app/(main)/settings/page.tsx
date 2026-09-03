@@ -10,7 +10,8 @@ const sections = [
     title: "Account",
     links: [
       { href: "/profile/edit", label: "Edit profile" },
-      { href: "/settings/privacy", label: "Privacy" }
+      { href: "/settings/privacy", label: "Privacy" },
+      { href: "/settings/payments", label: "Payments" }
     ]
   },
   {
