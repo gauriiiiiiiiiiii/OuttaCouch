@@ -15,7 +15,7 @@ const payload = { to: "a@b.com", subject: "Hi", text: "Body" };
 describe("sendEmail", () => {
   beforeEach(() => {
     vi.stubEnv("EMAIL_USER", "me@gmail.com");
-    vi.stubEnv("EMAIL_PASS", "app-password");
+    vi.stubEnv("EMAIL_PASS", "dummy");
     vi.stubEnv("EMAIL_FROM", "OuttaCouch <me@gmail.com>");
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("EMAIL_ALLOW_SELF_SIGNED", "false");
@@ -33,7 +33,7 @@ describe("sendEmail", () => {
     expect(createTransport).toHaveBeenCalledWith(
       expect.objectContaining({
         service: "gmail",
-        auth: { user: "me@gmail.com", pass: "app-password" }
+        auth: { user: "me@gmail.com", pass: "dummy" }
       })
     );
     expect(sendMail).toHaveBeenCalledWith({

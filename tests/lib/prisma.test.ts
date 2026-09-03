@@ -39,7 +39,7 @@ async function loadPrisma() {
 describe("lib/prisma bootstrap", () => {
   beforeEach(() => {
     delete globalRef.prisma;
-    vi.stubEnv("DATABASE_URL", "postgresql://user:pw@host:5432/db");
+    vi.stubEnv("DATABASE_URL", "postgresql://user@host:5432/db");
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("DATABASE_SSL", "");
     vi.stubEnv("DATABASE_SSL_INSECURE", "");
@@ -51,7 +51,7 @@ describe("lib/prisma bootstrap", () => {
 
   it("defaults to strict SSL and wires the pg Pool through the Prisma adapter", async () => {
     await loadPrisma();
-    expect(ctor.pool).toHaveBeenCalledWith({ connectionString: "postgresql://user:pw@host:5432/db", ssl: { rejectUnauthorized: true } });
+    expect(ctor.pool).toHaveBeenCalledWith({ connectionString: "postgresql://user@host:5432/db", ssl: { rejectUnauthorized: true } });
     expect(ctor.adapter).toHaveBeenCalledTimes(1);
     expect(ctor.client).toHaveBeenCalledWith(expect.objectContaining({ log: ["warn", "error"], adapter: expect.anything() }));
   });
