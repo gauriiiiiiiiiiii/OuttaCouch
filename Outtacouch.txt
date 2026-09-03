@@ -30,7 +30,12 @@ A1) QUICK FACTS  (verifiable in the repo)
   - ~12,600 lines of TypeScript/TSX.
   - 45 API route handlers · 35 pages/screens · 15 Prisma models · 7 migrations.
   - One Next.js 15 codebase serving both frontend and backend.
-  - Quality snapshot: zero TS errors, clean lint, clean production build.
+  - Quality snapshot: zero TS errors, clean lint, clean production build,
+    544 automated tests (Vitest; ~99% line / ~98% function coverage) covering
+    lib, middleware, every API route, the Socket.io auth layer, every
+    component and every page (`npm test`, `npm run test:coverage`), plus a
+    100-check end-to-end smoke script (scripts/e2e) run against a disposable
+    Postgres.
   - Warm response times observed: ~120ms homepage · ~163ms auth session ·
     ~755ms feed.
 
@@ -63,7 +68,8 @@ FRONTEND
     (why raw: HMR reuse bug, see C3).
   Recharts — host analytics charts.
   react-hook-form — form state/validation (event wizards).
-  Zustand — authStore/uiStore (largely unused; session truth is NextAuth).
+  State: component-local useState + fetch-on-mount; session truth is NextAuth
+    (no global store — the unused Zustand stores were removed).
 BACKEND
   Next.js API routes (app/api/*) — 45 handlers; colocated REST backend.
   NextAuth v4 (Credentials + JWT) — most routes read the JWT via getToken;
@@ -206,7 +212,8 @@ EVENTS
   PUT    /api/events/:id         update (host).
   DELETE /api/events/:id         delete + cascade (host).
   GET    /api/events/:id/edit    form-shaped detail (host).
-  POST   /api/events/:id/commit  join FREE event (transactional capacity).
+  POST   /api/events/:id/commit  join FREE event (atomic conditional UPDATE
+                                 capacity; P2002 -> "already-committed").
   DELETE /api/events/:id/commit  cancel attendance.
   GET/POST/PUT/DELETE /api/events/:id/images   gallery (host).
   GET    /api/events/host        current user's hosted events.
@@ -230,8 +237,7 @@ CHAT
   GET  /api/chat                       conversation list + unread counts.
   GET  /api/chat/:connectionId         history (participant-gated).
   POST /api/chat/:connectionId         send (persist then emit "message").
-  PUT  /api/chat/:connectionId/read    mark read.  (OPEN: no participant
-                                       check — see C2.)
+  PUT  /api/chat/:connectionId/read    mark read (participant-gated).
 NOTIFICATIONS
   GET  /api/notifications              newest 50.
   DELETE /api/notifications            clear all.
@@ -240,19 +246,19 @@ NOTIFICATIONS
   PUT  /api/notifications/read-all     mark all read.
   GET/POST /api/notifications/dispatch cron; dual-auth (Bearer CRON_SECRET
                                        or NOTIFICATION_DISPATCH_SECRET).
-  POST /api/notifications/subscribe    web-push stub (no-op).
 REFERRALS / CONTACTS
   GET  /api/referrals                  stats + invitations + links.
   POST /api/referrals/share            {phones?,contactIds?,channel} invites.
-  GET/POST /api/referrals/:code        validate/track click; POST completes
-                                       referral. (OPEN IDOR — see C2.)
+  GET/POST /api/referrals/:code        validate/track click; POST redeems for
+                                       the SIGNED-IN caller (session required).
   GET/POST /api/contacts               list / import.
   GET/POST /api/contacts/sync          device sync + registered lookup.
-  POST /api/contacts/invite            deprecated -> 410 (use referrals/share).
 USERS / STORAGE
   GET/PUT/DELETE /api/users/me         profile (DELETE = soft deactivate).
-                                       (OPEN: GET returns full row incl.
-                                       passwordHash — see C2.)
+                                       Explicit safe select (lib/userSelect):
+                                       passwordHash/stripe ids never returned;
+                                       PUT validates fields and cannot set
+                                       profileComplete.
   PUT  /api/users/me/location          {lat,lng,city,profileComplete?}.
   PUT  /api/users/me/privacy           {profileVisibility}.
   GET  /api/users/:id                  public profile (visibility-gated).
@@ -262,7 +268,7 @@ Errors: JSON {error} with 400/401/403/404/409/500/502. Referral completion
 
 A7) FRONTEND MAP  (components; page routes are in A4)
 -----------------------------------------------------------------
-  components/ui      — PageShell, SectionCard, NotificationBell, ChatBadge, Button.
+  components/ui      — PageShell, SectionCard, NotificationBell, ChatBadge.
   components/events  — EventMap (Leaflet embed), MapPicker (picker),
                        SwipeStack (Framer Motion cards).
   components/profile — ProfileHeader, CalendarGrid, MemoriesGrid.
@@ -276,10 +282,10 @@ A8) ENVIRONMENT  (.env.example)
   EMAIL_ALLOW_SELF_SIGNED, NEXTAUTH_SECRET, NEXTAUTH_URL, NEXT_PUBLIC_APP_URL,
   EMAIL_USER/PASS/FROM, TWILIO_ACCOUNT_SID/AUTH_TOKEN/VERIFY_SERVICE_SID/
   PHONE_NUMBER/WHATSAPP_NUMBER, DEFAULT_PHONE_COUNTRY_CODE,
-  NEXT_PUBLIC_SUPABASE_URL/ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
-  CRON_SECRET, NOTIFICATION_DISPATCH_SECRET.
-  CI: next lint + tsc --noEmit -> prisma generate -> next build ->
-  prisma migrate deploy. vercel.json sets the 5-min dispatch cron.
+  NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (no anon key: uploads
+  are server-side only), CRON_SECRET, NOTIFICATION_DISPATCH_SECRET.
+  CI: next lint + tsc --noEmit + vitest run -> prisma generate -> next build
+  -> prisma migrate deploy. vercel.json sets the 5-min dispatch cron.
 
 
 #####################################################################
@@ -309,8 +315,9 @@ LOGIN: authorize() = normalizeContact -> per-IP limit (10/15min) ->
   findFirst(email OR phone) -> reject if missing/isDeactivated ->
   bcrypt.compare -> return {id,name,profileComplete,isDeactivated}.
 TOKEN JOURNEY (authOptions callbacks): jwt() on sign-in copies claims [no DB];
-  on trigger="update" copies client-passed values [no DB — trust gap, C2];
-  otherwise RE-READS DB for profileComplete/isDeactivated [DB]. session()
+  on every later call — including session.update() from the client — it
+  RE-READS DB for profileComplete/isDeactivated [DB]; client-passed claim
+  values are ignored (the DB is the only source of truth). session()
   projects claims onto session.user. So middleware validates with no DB hit;
   claim freshness depends on the last jwt re-read.
 HARD PART: two OTP mechanisms behind one interface — email codes WE own
@@ -344,19 +351,20 @@ GOTCHA (real design flaw, great talking point): ranking runs AFTER
 B3) COMMIT TO EVENT & CAPACITY  (concurrency)  ★
 -----------------------------------------------------------------
 FLOW: load event; reject if paid (isFree=false -> 403); pre-check existing
-  attendee -> "already-committed"; TRANSACTION { re-read event; if
-  currentAttendees>=maxAttendees throw EVENT_FULL; create EventAttendee;
-  increment counter }; map EVENT_FULL->409; if reminders enabled schedule
-  1-day/1-hour/10-min NotificationSchedule rows (idempotent via the unique key).
-HARD PART: two users racing the last seat is a classic race. The
-  transaction+re-read narrows the window; UNIQUE(eventId,userId) makes
-  double-commit impossible; that's why the capacity check is INSIDE the txn.
-GOTCHA: not fully airtight — two DIFFERENT users can both read the same
-  currentAttendees without a row lock; the clean fix is an atomic
-  `UPDATE ... SET current=current+1 WHERE current<max`. Also: concurrent
-  same-user commits throw an uncaught Prisma P2002 -> 500; the counter can
-  drift/go negative on cancel/refund (no floor); cancelling doesn't delete
-  the scheduled reminders.
+  attendee -> "already-committed"; TRANSACTION { create EventAttendee;
+  `UPDATE events SET current=current+1 WHERE id=? AND current<max`
+  ($executeRaw); 0 rows -> throw EVENT_FULL, which rolls the insert back };
+  EVENT_FULL->409, Prisma P2002 (same user twice) -> "already-committed"; if
+  reminders enabled schedule 1-day/1-hour/10-min NotificationSchedule rows
+  (idempotent via the unique key). Cancel = delete attendee + decrement with a
+  >0 floor + delete that user's unsent reminders, in one transaction.
+HARD PART: two users racing the last seat. The conditional UPDATE serialises
+  them on the row lock, so the invariant lives in ONE statement;
+  UNIQUE(eventId,userId) covers the same user twice. Lesson from v1
+  (read-then-check inside a txn): "wrap in a transaction" != "serialise the
+  invariant".
+GOTCHA: capacity still relies on the denormalised counter (C1.5); a DB
+  trigger or a COUNT(*) reconciliation job would make drift impossible.
 
 B4) REALTIME CHAT  (Socket.io)
 -----------------------------------------------------------------
@@ -370,10 +378,12 @@ HARD PART: hosting a persistent socket in App Router — it can't, so
   globalThis.io; API routes emit via lib/socketServer.ts. Single-node emits
   can silently no-op, so the sender re-fetches after a successful POST — the
   DB is the source of truth.
-GOTCHA: (security) socket connect/join are UNauthenticated -> anyone can join
-  any room and read/spoof messages, bypassing REST participant checks; also
-  the read route lacks a participant check (C2). (scale) globalThis assumes
-  one Node process -> breaks on serverless fan-out; needs a Redis adapter (C4).
+GOTCHA: (security — closed) the handshake is authenticated from the NextAuth
+  cookie (lib/socketAuth.ts), `join` verifies connection membership, there is
+  no client "message" relay, and typing carries the server-known userId; the
+  read route is participant-gated and POST requires status=accepted. (scale)
+  globalThis assumes one Node process -> breaks on serverless fan-out; needs a
+  Redis adapter (C4).
 
 B5) GROWTH LOOP  (contacts -> referral -> auto-connect)
 -----------------------------------------------------------------
@@ -387,11 +397,11 @@ FLOW: import contacts (Contact Picker or manual) -> invite (referrals/share
 HARD PART: threading the code through an OTP-gated multi-step signup so the
   auto-connect fires exactly once at account creation, and matching an invited
   phone to the new account.
-GOTCHA (real bug): POST /api/referrals/:code is unauthenticated and trusts a
-  client-supplied newUserId (IDOR -> force-connect + spam); codes are
-  Math.random 8-char = guessable (C2). contacts/sync deletes+recreates all
-  imports each run (loses invite history) and auto-connects matched users
-  without consent.
+GOTCHA: POST /api/referrals/:code now requires a session and redeems for the
+  caller only (re-activating a removed connection); codes come from
+  crypto.randomInt. Still open: contacts/sync deletes+recreates all imports
+  each run (loses invite history) and auto-connects matched users without
+  consent.
 
 B6) TICKETS & QR VALIDATION
 -----------------------------------------------------------------
@@ -404,22 +414,25 @@ FLOW: Ticket has a unique qrCode rendered with qrcode.react (tickets/me lists;
 HARD PART: authorization + idempotency at the door — only the host validates,
   and a QR must validate exactly once (unique qrCode + qrValidated flag;
   scoped by qrCode+eventId + host check).
-GOTCHA: the "scanner" is manual paste, not a camera. The already-validated
-  check and the update aren't atomic (double-validate race). Refund issues NO
-  real money (no processor wired) — it only flips status; payments were
-  intentionally out of scope, so the ticketing/payment infra is half-built.
+GOTCHA: the "scanner" is manual paste, not a camera. Validation is a
+  conditional updateMany (qrValidated=false) so a racing second scan gets 409;
+  refund is one transaction, refuses already-scanned tickets and floors the
+  counter. Refund issues NO real money (no processor wired) — it only flips
+  status; payments were intentionally out of scope, so the ticketing/payment
+  infra is half-built (no endpoint creates tickets).
 
 B7) NOTIFICATIONS & DISPATCH
 -----------------------------------------------------------------
 FLOW: in-app Notification rows (list newest 50, mark/dismiss owner-checked,
   read-all). Reminders live as NotificationSchedule rows (B3). Cron dispatch
-  every 5 min: query schedules with sendAt<=now and sentAt=null (take 200),
-  in a transaction createMany Notification rows and stamp sentAt. Dual-auth
-  (Bearer CRON_SECRET or NOTIFICATION_DISPATCH_SECRET); both checks guarded so
-  an unset secret can't be bypassed.
-GOTCHA: select+claim aren't atomic -> overlapping runs can double-send; a
-  backlog >200 drains slowly; scheduled email/push isn't wired (dispatch only
-  makes in-app rows). subscribe endpoint is a no-op stub.
+  every 5 min: in one transaction `updateManyAndReturn` claims every row with
+  sendAt<=now and sentAt=null (a single UPDATE ... RETURNING), then createMany
+  Notification rows from the claimed set; a failed fan-out rolls the claim
+  back. Dual-auth (Bearer CRON_SECRET or NOTIFICATION_DISPATCH_SECRET); both
+  checks guarded so an unset secret can't be bypassed.
+GOTCHA: overlapping runs can no longer double-send and the backlog drains in
+  one pass; scheduled email/push isn't wired (dispatch only makes in-app
+  rows; the old no-op subscribe stub was removed).
 
 
 #####################################################################
@@ -449,8 +462,9 @@ Template: "Chose X for [benefit]; cost is [downside]; revisit when [trigger]."
     SQL/PostGIS on the hot path.
   10 POSTGRES — relational integrity (unique attendee, cascades, txn
     capacity); document DB would fight all of it.
-  11 TAILWIND + hand-rolled UI (Button exists but bypassed) — fast; cost:
-    design-system drift; fix: consolidate on Button/PageShell.
+  11 TAILWIND + hand-rolled UI — fast; cost: design-system drift; fix: a
+    shared Button/Input primitive (the never-used Button.tsx was deleted
+    rather than left half-adopted).
   12 SUPABASE — managed PG+Storage+pooling; cost: some coupling (hardcoded
     storage host in next.config); fix: parameterize.
   WHY user1/user2 not a directed follow: the request is directional
@@ -481,40 +495,41 @@ DEFENDED (verified present):
   - Per-IP rate limits: send-otp 5/15m · verify-otp 15/15m (+5-attempt DB
     lock) · register 5/hr · login 10/15m.
 
-OPEN GAPS — ranked (WHAT · IMPACT · FIX). Root theme: broken access control.
-  CRITICAL
-  1 GET /api/events/:id has no auth/host check yet returns full attendee list
-    (names/emails), revenue, analytics -> anyone scrapes PII+financials. Fix:
-    split public vs host-only fields; gate behind host===token.sub.
-  2 POST /api/referrals/:code unauthenticated + trusts client newUserId;
-    codes Math.random 8-char -> forced connection + notification spam (IDOR).
-    Fix: require session; assert newUserId===session.user.id; CSPRNG codes.
-  3 JWT update-trigger copies client profileComplete/isDeactivated with no DB
-    check; PUT /api/users/me also lets a client set profileComplete ->
-    onboarding-gate bypass / self-un-deactivate. Fix: DB is source of truth.
-  4 GET/PUT/DELETE /api/users/me return the FULL user row incl. passwordHash
-    -> hash leaves the server. Fix: explicit Prisma select (DTO). [OPEN — the
-    prior "fixed" claim was never applied; verified in users/me/route.ts.]
-  5 Socket.io connect/join unauthenticated + chat/:id/read has no participant
-    check + chat REST ignores connection status -> join any room, mark others'
-    messages read, removed users keep access. Fix: auth the handshake; verify
-    membership; enforce status="accepted". [read-route IDOR OPEN — verified.]
-  HIGH / MEDIUM
-  6 Stored XSS in Leaflet popups (event title/venue as raw HTML). Fix: escape.
-  7 reset-password lacks CSRF + rate limit (siblings have them); no session
-    invalidation after reset. Fix: add both; bump a token version.
-  8 Rate limiter in-memory (serverless-ineffective) + x-forwarded-for
+CLOSED IN CODE (each has unit tests and was exercised end-to-end):
+  1 GET /api/events/:id — roster/revenue/analytics are host-only (isHost);
+    goingList never falls back to email.
+  2 POST /api/referrals/:code — session required, redeems for the caller;
+    referral + OTP codes from crypto.randomInt.
+  3 JWT update-trigger ignores client claims (DB re-read); PUT /api/users/me
+    no longer accepts profileComplete; location/privacy/profile bodies are
+    validated.
+  4 /api/users/me returns an explicit safe select (no passwordHash/stripe ids).
+  5 Socket.io handshake authenticated + join membership-checked; no client
+    message relay; chat read route participant-gated; chat POST requires
+    status=accepted.
+  6 Leaflet popups HTML-escaped (lib/escapeHtml).
+  7 reset-password has CSRF + rate limit; min password length 8 on
+    register + reset.
+  8 Event image PUT/DELETE scoped to the event; upload folder validated,
+    object keys user-scoped, upsert off.
+  9 GET /api/users/:id timeline visibility-filtered for other viewers.
+  + feed ?page=abc no longer blanks the feed; swipe action validated;
+    accept/decline require a pending request; self/deactivated targets
+    rejected; middleware now covers /explore/:path*.
+OPEN GAPS — ranked (WHAT · IMPACT · FIX):
+  1 Rate limiter in-memory (serverless-ineffective) + x-forwarded-for
     spoofable. Fix: Redis + trusted client-IP.
-  9 GET /api/users/:id timeline events aren't visibility-filtered (unlike the
-    public calendar) -> private event details leak. Fix: filter by visibility.
-  10 email/phone used as display-name fallback across list endpoints (PII).
-  HARDENING: Math.random for OTP+referral codes -> CSPRNG; no password-strength
-    rule; bcrypt cost 10; upload trusts client file.type (no magic-byte sniff)
-    + unsanitized non-user-scoped folder with upsert:true; CSRF treats missing
-    Origin as trusted + not applied uniformly; NODE_TLS_REJECT_UNAUTHORIZED=0
-    non-prod (Windows workaround) is risky.
-  OWASP map: A01 Broken Access Control (#1,#2,#5,#9 — dominant) · A02 Crypto
-    (#4, Math.random) · A03 Injection (#6) · A07 Auth (#7,#8).
+  2 No session invalidation after password reset/deactivation (JWT). Fix:
+    token-version claim checked in the jwt callback.
+  3 email/phone used as display-name fallback in chat/connection lists
+    (visible to connected users only). Fix: displayName ?? "User".
+  4 Upload trusts client file.type (no magic-byte sniff).
+  5 CSRF treats a missing Origin as trusted (non-browser clients) and is not
+    applied to every mutation.
+  6 NODE_TLS_REJECT_UNAUTHORIZED=0 in non-prod (Windows dev workaround).
+  7 contacts/sync auto-connects without consent and wipes invite history.
+  OWASP map: A01 Broken Access Control (historic #1–#5,#9 — closed) ·
+    A07 Auth (#1,#2 open) · A02 Crypto/Config (#4,#6) · A05 (#5).
 
 C3) NOTABLE CHALLENGES & FIXES  ("walk me through a hard bug" material)
 -----------------------------------------------------------------
@@ -541,10 +556,31 @@ C3) NOTABLE CHALLENGES & FIXES  ("walk me through a hard bug" material)
   - Audit fixes actually applied: FK cascade on event delete; feed visibility
     filter; QR re-scan 409; swipe no longer a blind create; CSRF on event
     create/swipe; dead unauthenticated /api/auth/login route removed.
-  - MIGRATION ORDERING BUG (open): the folder 20260326_contact_sync_invitations
-    lacks a HHMMSS timestamp, so it sorts AFTER 20260326192013_… which alters
-    tables it hasn't created yet -> a clean `prisma migrate deploy` fails.
-    Fix: rename with a proper timestamp.
+  - MIGRATION ORDERING (verified NOT a bug): the folder
+    20260326_contact_sync_invitations lacks a HHMMSS suffix, but Prisma orders
+    migrations by the numeric prefix (20260326 < 20260326192013), so it applies
+    first. Confirmed by `prisma migrate deploy` on a fresh embedded Postgres.
+  - TIMESTAMPS: columns are `timestamp` without zone and Prisma reads/writes
+    them as UTC wall-clock; anything else that writes the DB (seeds, raw SQL)
+    must do the same or reminders/feeds shift by the server's UTC offset.
+  - Warm /api/socketio returns an Engine.IO 400 "Transport unknown" for a bare
+    GET once Socket.io has attached — expected; the chat page's bootstrap
+    fetch is fire-and-forget.
+  - SWIPE DOUBLE-SKIP (fixed): SwipeStack advanced a positional index while
+    the explore pages also removed the swiped card from the list, so every
+    Skip dropped two cards. Now dismissal is tracked by event id, and only the
+    card that was actually swiped animates.
+  - DEAD CODE REMOVED (Sept 2026 audit): Zustand stores + package, unused
+    useContacts/useReferrals hooks, Button.tsx, the anon Supabase client,
+    the 410 /api/contacts/invite stub, the no-op /api/notifications/subscribe
+    route, the duplicate /profile/calendar page, the localStorage "pending
+    calendar event" hack, the never-populated swipe-based public calendar,
+    the unused react-leaflet package. Orphaned pages (/profile/tickets,
+    /settings/payments) are now linked from profile quick actions / settings.
+  - TEST-ONLY LESSON: Next's useRouter() is a stable reference and several
+    effects list `router` in their deps; a test mock that returns a fresh
+    object per render livelocks the page (microtask loop). Mocks must return
+    one router object per file.
 
 C4) SCALING & PERFORMANCE  (bottlenecks in priority order; symptom -> fix)
 -----------------------------------------------------------------
@@ -574,21 +610,23 @@ Framing: single-region monolith on pooled Postgres; attack order = feed,
 
 C5) CURRENT STATE & ROADMAP
 -----------------------------------------------------------------
-State: tsc/lint/build clean; all A6 flows implemented; C3-applied fixes in.
-  Payments intentionally offline. Prior integrations removed (Stripe, Resend,
-  standalone socket lib). NO automated tests yet.
+State: tsc/lint/build clean; 544 Vitest tests green (`npm test`, ~99% line
+  coverage); the scripts/e2e smoke script passes 100 checks against a
+  disposable Postgres.
+  All A6 flows implemented; the C2 access-control cluster is closed. Payments
+  intentionally offline. Prior integrations removed (Stripe, Resend,
+  standalone socket lib).
 Prioritized backlog (order = the answer being graded):
-  P0 SECURITY/CORRECTNESS: close C2 access-control cluster (#1–#5); stop
-    trusting client auth flags; fix the migration-ordering deploy bug;
-    concurrency (atomic capacity UPDATE, catch P2002, floor counter, atomic
-    dispatch claim, atomic QR validate).
-  P1 SCALE: Redis rate limiter; feed fix (filter+rank-before-paginate+PostGIS);
-    dedicated socket + Redis adapter; add missing uniques (Connection
-    user1/user2, EventSwipe user/event) + real upserts.
-  P2 QUALITY: test suite (start with capacity txn, auth/OTP, ranking, referral
-    auto-connect; then API integration; add CI); zod validation layer;
-    de-dup the new/edit event wizards + OTP-verify components; timezone
-    correctness (store UTC, render local).
+  P0 SECURITY/CORRECTNESS (DONE): C2 access-control cluster closed; client
+    auth flags no longer trusted; concurrency fixed (atomic capacity UPDATE,
+    P2002 handled, counter floors, atomic dispatch claim, atomic QR validate).
+    Remaining P0: Redis rate limiter; JWT revocation on reset/deactivate.
+  P1 SCALE: feed fix (filter+rank-before-paginate+PostGIS); dedicated socket +
+    Redis adapter; add missing uniques (Connection user1/user2, EventSwipe
+    user/event) + real upserts.
+  P2 QUALITY: wire `npm test` + `npm run typecheck` into CI; zod validation
+    layer; de-dup the new/edit event wizards + OTP-verify components;
+    timezone correctness (store UTC, render local).
   P3 FEATURES: real payments (Stripe+webhooks); manual approval
     (ApprovalMode.manual unused) + waitlist (AttendeeStatus.waitlisted unused);
     real camera QR scanner; web push (subscribe is a stub); learned ranking.
@@ -628,10 +666,11 @@ Prompt map: hard technical -> D2a or D2b · trade-off -> D2c · bug/self-review
 D2a CAPACITY RACE (concurrency): S last-seat double-book / double-commit.
   T guarantee no overbook without heavy locking. A capacity check +
   writes in one Prisma txn (re-read, throw EVENT_FULL, create attendee,
-  increment) + UNIQUE(eventId,userId); map EVENT_FULL->409. R works in the
-  common case; my own review found two different users can still race the last
-  seat -> the correct fix is an atomic conditional UPDATE, and I must catch
-  P2002 instead of 500ing. Lesson: "wrap in a transaction" ≠ "serialize the
+  increment) + UNIQUE(eventId,userId); map EVENT_FULL->409. R v1 worked in
+  the common case; my own review found two different users could still race
+  the last seat -> replaced read-then-check with an atomic conditional UPDATE
+  inside the txn and mapped P2002 to "already-committed" (unit-tested and
+  verified end-to-end). Lesson: "wrap in a transaction" ≠ "serialize the
   invariant."
 D2b REALTIME IN APP ROUTER (most proud): S live chat inside one Next.js app.
   T App Router can't hold a persistent server and I didn't want a separate
@@ -640,7 +679,8 @@ D2b REALTIME IN APP ROUTER (most proud): S live chat inside one Next.js app.
   writes DB, THEN emits) so the socket is a delivery channel, not the source
   of truth; persist-then-refetch fallback. R end-to-end realtime in one
   deploy; clear-eyed on the limits — single process, so production is a
-  dedicated socket service + Redis adapter + authed handshake.
+  dedicated socket service + Redis adapter (the handshake is already authed
+  from the session cookie and `join` checks membership).
 D2c JWT vs DB SESSIONS (trade-off): S auth that also gates onboarding +
   deactivation on every protected route. T stateless JWT vs DB sessions given
   middleware runs on every nav. A JWT + edge gating with claims, refreshed by
@@ -653,8 +693,9 @@ D2d SECURITY SELF-AUDIT (initiative): S before "done," a systematic pass over
   trust the client. A route by route: "who can call this? does it re-verify
   ownership?" — surfaced the event-detail PII/revenue leak, the referral IDOR,
   the passwordHash exposure, the unauthenticated socket; ranked + OWASP-mapped
-  (root cause A01). R a prioritized fix list + a default rule: authorization
-  is a server-side re-check on every sensitive read/write.
+  (root cause A01). R a prioritized fix list, since closed in code with a test
+  per finding, + a default rule: authorization is a server-side re-check on
+  every sensitive read/write.
 Delivery: mostly ACTION; always a RESULT + LESSON (even when it exposed a
   limit); use "I"; drop the frame and go deep if interrupted.
 
@@ -676,21 +717,28 @@ Auth & data
   Q JWT or session, why? -> C1.2.  Q How does OTP work? -> B1 hard part.
   Q Passwords? -> bcrypt; email OTP hashed; phone via Twilio.
   Q Prevent double-commit / overbooking? -> B3.  Q Counter vs COUNT(*)? -> C1.5.
-  Q Chat authz? -> GET/POST load the connection + verify user1/user2 (but read
-    route + socket are OPEN, C2).  Q Refunds without a processor? -> B6.
+  Q Chat authz? -> GET/POST/read load the connection + verify user1/user2;
+    POST requires status=accepted; the socket handshake + join are
+    authenticated too.  Q Refunds without a processor? -> B6.
   Q Idempotent reminders? -> UNIQUE(userId,eventId,type,sendAt)+skipDuplicates.
 Realtime / feed
   Q How does chat deliver live? -> B4.  Q Why not poll? -> latency+load (badge
     does poll 30s).  Q Ranking + what's wrong? -> B2.  Q Scale to millions? ->
     C4.1.
 Security / scale
-  Q Biggest weakness? -> broken access control; server-side re-checks (C2).
-  Q CSRF? -> same-origin on mutations (not uniform; reset-password lacks it).
-  Q XSS? -> Leaflet popups raw HTML (C2 #6).  Q Production-secure? -> "MVP-
-    secure with a ranked hardening backlog."  Q First bottleneck? -> C4.
+  Q Biggest weakness? -> WAS broken access control; closed with server-side
+    re-checks on every sensitive read/write (C2). Now: the in-memory limiter.
+  Q CSRF? -> same-origin Origin check on all auth mutations, event create and
+    swipe.  Q XSS? -> React escapes by default; the one raw-HTML sink
+    (Leaflet popups) goes through lib/escapeHtml.  Q Production-secure? ->
+    "MVP-secure with a short, ranked hardening backlog."  Q First bottleneck?
+    -> C4.
   Q Images? -> server-side service-role upload + validation + CDN.
 Process / curveballs
-  Q Tests? -> none yet; risk-ranked plan (C5 P2).  Q Refactor? -> C5 P2.
+  Q Tests? -> 544 Vitest tests, ~99% line coverage (lib, middleware, every
+    API route, socket auth, every component and page) + the scripts/e2e
+    smoke script over a disposable Postgres; next is CI wiring (C5 P2).
+    Q Refactor? -> C5 P2.
   Q Most proud? -> D2b.  Q Solo — what did YOU build? -> all of it.
   Q Do differently? -> a validation+authorization helper layer first, so every
     route inherited body-validation + ownership checks (would've prevented the
@@ -712,8 +760,9 @@ D5) REHEARSAL CHECKLIST
   drill -> curveball), recorded.
 Must-know-cold: pitch · A4 diagram + request sentence · B1 auth + C1.2 JWT
   trade-off · B2 formula+flaw · B3 concurrency · B4 REST-persist/socket-deliver
-  + globalThis limit · C2 top-3 gaps+fixes · the 3 headline trade-offs
-  (monolith/JWT/no-payments) · "no tests yet"+plan · one flawless STAR story.
+  + globalThis limit · C2 closed cluster + what is still open · the 3 headline
+  trade-offs (monolith/JWT/no-payments) · "544 tests, ~99% coverage + e2e
+  smoke script" · one flawless STAR story.
 Verify before you walk in: real user count · the A1 scope numbers match the
   repo · which C2 gaps you've actually FIXED in code (don't claim a fix an
   interviewer can't see — this is why the ACCURACY NOTE exists).
